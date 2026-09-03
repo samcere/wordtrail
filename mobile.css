@@ -1,0 +1,8 @@
+.mobile-nav{display:none}
+
+@media (max-width:900px){
+  .mobile-nav{position:fixed;z-index:30;right:10px;bottom:10px;left:10px;display:grid;grid-template-columns:repeat(4,1fr);padding:5px;border:1px solid #cad6d4;border-radius:13px;background:rgba(255,255,255,.96);box-shadow:0 14px 35px rgba(18,35,63,.16);backdrop-filter:blur(12px)}
+  .mobile-nav button{display:grid;place-items:center;gap:2px;min-height:49px;border:0;border-radius:9px;background:transparent;color:#637480;font:10px var(--body)}
+  .mobile-nav button svg{width:18px;height:18px}
+  .mobile-nav button.active{background:var(--tealPale);color:#11766e;font-weight:700}
+}

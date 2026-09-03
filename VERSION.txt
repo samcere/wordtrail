@@ -1,0 +1,3 @@
+Wordtrail / 词轨
+Version: 0.10
+Package: local offline edition

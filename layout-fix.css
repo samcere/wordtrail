@@ -1,0 +1,4 @@
+/* A fixed sidebar is out of normal grid flow; keep the main area in column two. */
+@media (min-width:901px){
+  .app-shell > main{grid-column:2;min-width:0}
+}
