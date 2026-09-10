@@ -1,8 +1,11 @@
-const CACHE = 'wordtrail-static-v010-4';
+const CACHE = 'wordtrail-static-v010-6-pdf-fonts';
 const CORE = [
   './', './index.html', './styles.css', './mobile.css', './layout-fix.css', './v123.css', './v13.css',
   './app.js', './static-service.js', './omr.js', './manifest.webmanifest', './icon.svg',
-  './vendor/xlsx.full.min.js', './vendor/jsQR.js', './vendor/qrcode.js', './dictionary/manifest.json'
+  './vendor/xlsx.full.min.js', './vendor/jsQR.js', './vendor/qrcode.js',
+  './vendor/pdf-lib.min.js', './vendor/fontkit.umd.min.js',
+  './vendor/WordtrailSansSC-Common.ttf', './vendor/WordtrailSansSC-Regular.ttf',
+  './vendor/NotoSans-Regular.ttf', './dictionary/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {

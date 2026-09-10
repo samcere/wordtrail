@@ -193,17 +193,151 @@
   }
   function header(commands, title, plan, page) { commands.push('0.08 0.16 0.27 rg', pdfText(title, 18 * MM, 282 * MM, 18), '0.55 0.65 0.70 RG 0.6 w', pdfLine(18 * MM, 278 * MM, 192 * MM, 278 * MM), pdfText(`${plan.name} · ${plan.start_week} · 第 ${page} 页`, 18 * MM, 271 * MM, 8)); }
   function cardPayload(plan, paper, cardPage) { const unsigned = `WT1|${plan.id}|${plan.week.id}|${paper.id}|${paper.version}|${cardPage}`; return `${unsigned}|${hash(unsigned)}`; }
-  function createPdf(plan, kind, source) {
+  function createLegacyPdf(plan, kind, source) {
     const pages = []; const paper = kind === 'study' ? null : source; const list = kind === 'study' ? source : paper.items.map((item) => item.word); const title = kind === 'study' ? '背诵表' : kind === 'answer' ? `${paper.label} · 答案表` : paper.label;
     for (let start = 0; start < Math.max(1, list.length); start += ITEMS_PER_PAGE) { const segment = list.slice(start, start + ITEMS_PER_PAGE); const commands = []; header(commands, title, plan, Math.floor(start / ITEMS_PER_PAGE) + 1); if (kind === 'exam') commands.push(pdfText('姓名：__________________　日期：__________________　看英文填写常用中文义。', 18 * MM, 259 * MM, 8)); const yHead = kind === 'exam' ? 249 * MM : 255 * MM; const headings = kind === 'exam' ? ['序号', '英文单词', '中文释义（手写）', '把握', '复盘'] : ['序号', '英文单词', '音标 / 词性', '常用释义']; const xs = kind === 'exam' ? [18, 31, 86, 157, 180] : [18, 31, 84, 132]; headings.forEach((heading, index) => commands.push(pdfText(heading, xs[index] * MM, yHead, 8))); segment.forEach((word, index) => { const y = yHead - (index + 1) * 7 * MM; const no = start + index + 1; commands.push('0.82 0.85 0.86 RG 0.35 w', pdfLine(18 * MM, y - 2 * MM, 192 * MM, y - 2 * MM), pdfLatin(String(no).padStart(2, '0'), 18 * MM, y, 8), pdfLatin(word.word.slice(0, 30), 31 * MM, y, 9)); if (kind === 'exam') commands.push(pdfLine(86 * MM, y - 0.5 * MM, 151 * MM, y - 0.5 * MM), pdfText('□ 熟　□ 犹豫', 157 * MM, y, 7), pdfText('□ 复习', 180 * MM, y, 7)); else commands.push(pdfLatin(`${word.phonetic || ''} ${word.part_of_speech || ''}`.slice(0, 28), 84 * MM, y, 7), pdfText((word.meaning || '尚未补全释义').slice(0, 29), 132 * MM, y, 8)); }); commands.push(pdfText(`词轨 Wordtrail · 本页 ${segment.length} 词 · 每页最多 30 词`, 18 * MM, 12 * MM, 8)); pages.push(commands); }
     if (kind === 'exam') for (let start = 0; start < Math.max(1, paper.items.length); start += CARDS_PER_PAGE) { const cardPage = Math.floor(start / CARDS_PER_PAGE) + 1; const segment = paper.items.slice(start, start + CARDS_PER_PAGE); const commands = []; header(commands, `${paper.label} · 错题勾选卡`, plan, Math.ceil(list.length / ITEMS_PER_PAGE) + cardPage); commands.push(pdfText(`第 ${cardPage} / ${Math.max(1, Math.ceil(paper.items.length / CARDS_PER_PAGE))} 张：答错时涂满左侧圆圈；右侧圆圈留空。`, 18 * MM, 268 * MM, 8), ...markerCommands(10, 10), ...markerCommands(200, 10), ...markerCommands(10, 287), ...markerCommands(200, 287)); segment.forEach((item, index) => { const row = Math.floor(index / 10); const column = index % 10; const x = 18 + column * 17.4; const y = 297 - 41 - (row + 1) * 13.5; commands.push('0.48 0.57 0.62 RG 0.55 w', pdfRect(x * MM, y * MM, 17.4 * MM, 13.5 * MM), pdfCircle((x + 3.2) * MM, (y + 6.5) * MM, 1.7 * MM), pdfCircle((x + 7.7) * MM, (y + 6.5) * MM, 1.7 * MM), '0.06 0.14 0.25 rg', pdfLatin(String(item.no).padStart(3, '0'), (x + 11.2) * MM, (y + 5.1) * MM, 8)); }); const payload = cardPayload(plan, paper, cardPage); commands.push(...qrCommands(payload, 18 * MM, 22 * MM, 18 * MM), pdfText('页面核验码：自动确认考试、周期与答题卡页码', 39 * MM, 28 * MM, 7.5), pdfLatin(`WT-OMR-STATIC · ${cardPage}/${Math.max(1, Math.ceil(paper.items.length / CARDS_PER_PAGE))}`, 39 * MM, 18 * MM, 8)); pages.push(commands); }
     return buildPdf(pages);
   }
+
+  let pdfFontBytesPromise;
+  let pdfFallbackFontPromise;
+  async function loadPdfFontBytes() {
+    if (!window.PDFLib || !window.fontkit) throw new Error('PDF 字体组件未加载，请刷新页面后重试');
+    if (window.__WORDTRAIL_PDF_FONTS) return window.__WORDTRAIL_PDF_FONTS;
+    if (!pdfFontBytesPromise) {
+      const load = async (name) => {
+        const response = await fetch(new URL(`vendor/${name}`, ASSET_ROOT));
+        if (!response.ok) throw new Error(`无法加载 PDF 字体：${name}`);
+        return new Uint8Array(await response.arrayBuffer());
+      };
+      pdfFontBytesPromise = Promise.all([
+        load('WordtrailSansSC-Common.ttf'),
+        load('NotoSans-Regular.ttf')
+      ]).then(([cjk, latin]) => ({ cjk, latin }));
+    }
+    return pdfFontBytesPromise;
+  }
+  async function loadPdfFallbackFont() {
+    if (window.__WORDTRAIL_PDF_FONTS?.fallback) return window.__WORDTRAIL_PDF_FONTS.fallback;
+    if (!pdfFallbackFontPromise) {
+      pdfFallbackFontPromise = fetch(new URL('vendor/WordtrailSansSC-Regular.ttf', ASSET_ROOT)).then(async (response) => {
+        if (!response.ok) throw new Error('无法加载 PDF 中文备用字体');
+        return new Uint8Array(await response.arrayBuffer());
+      });
+    }
+    return pdfFallbackFontPromise;
+  }
+  const trimPdfText = (value, limit) => [...String(value || '')].slice(0, limit).join('');
+  function pdfColor(hex) {
+    const value = Number.parseInt(hex.replace('#', ''), 16);
+    return window.PDFLib.rgb(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
+  }
+  function drawPdfText(page, font, value, x, y, size = 9, color = '#142943') {
+    page.drawText(String(value || ''), { x, y, size, font, color: pdfColor(color) });
+  }
+  function drawPdfLine(page, x1, y1, x2, y2, thickness = 0.35, color = '#d1d9dc') {
+    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness, color: pdfColor(color) });
+  }
+  function drawPdfHeader(page, font, title, plan, pageNumber) {
+    drawPdfText(page, font, title, 18 * MM, 282 * MM, 18);
+    drawPdfLine(page, 18 * MM, 278 * MM, 192 * MM, 278 * MM, 0.6, '#8ca6b3');
+    drawPdfText(page, font, `${plan.name} · ${plan.start_week} · 第 ${pageNumber} 页`, 18 * MM, 271 * MM, 8);
+  }
+  function drawPdfMarker(page, x, y) {
+    for (const [radius, color] of [[4, '#000000'], [2.45, '#ffffff'], [1.35, '#000000'], [0.55, '#ffffff'], [0.28, '#000000']]) {
+      page.drawCircle({ x: x * MM, y: y * MM, size: radius * MM, color: pdfColor(color) });
+    }
+  }
+  function drawPdfQr(page, payload, x, y, size) {
+    if (!window.qrcode) return;
+    const qr = qrcode(0, 'M'); qr.addData(payload, 'Byte'); qr.make();
+    const count = qr.getModuleCount(); const quiet = 4; const cell = size / (count + quiet * 2);
+    for (let row = 0; row < count; row++) for (let column = 0; column < count; column++) if (qr.isDark(row, column)) {
+      page.drawRectangle({ x: x + (column + quiet) * cell, y: y + (count - row - 1 + quiet) * cell, width: cell + 0.08, height: cell + 0.08, color: pdfColor('#000000') });
+    }
+  }
+  function drawWordSheetPage(pdfDocument, fonts, plan, kind, paper, list, start) {
+    const page = pdfDocument.addPage(window.PDFLib.PageSizes.A4);
+    const title = kind === 'study' ? '背诵表' : kind === 'answer' ? `${paper.label} · 答案表` : paper.label;
+    const pageNumber = Math.floor(start / ITEMS_PER_PAGE) + 1;
+    const segment = list.slice(start, start + ITEMS_PER_PAGE);
+    drawPdfHeader(page, fonts.cjk, title, plan, pageNumber);
+    if (kind === 'exam') drawPdfText(page, fonts.cjk, '姓名：__________________  日期：__________________  看英文填写常用中文义。', 18 * MM, 259 * MM, 8);
+    const yHead = kind === 'exam' ? 249 * MM : 255 * MM;
+    const headings = kind === 'exam' ? ['序号', '英文单词', '中文释义（手写）', '把握', '复盘'] : ['序号', '英文单词', '音标 / 词性', '常用释义'];
+    const xs = kind === 'exam' ? [18, 31, 86, 157, 180] : [18, 31, 84, 132];
+    headings.forEach((heading, index) => drawPdfText(page, fonts.cjk, heading, xs[index] * MM, yHead, 8));
+    segment.forEach((word, index) => {
+      const y = yHead - (index + 1) * 7 * MM; const no = start + index + 1;
+      drawPdfLine(page, 18 * MM, y - 2 * MM, 192 * MM, y - 2 * MM);
+      drawPdfText(page, fonts.latin, String(no).padStart(2, '0'), 18 * MM, y, 8);
+      drawPdfText(page, fonts.latin, trimPdfText(word.word, 30), 31 * MM, y, 9);
+      if (kind === 'exam') {
+        drawPdfLine(page, 86 * MM, y - 0.5 * MM, 151 * MM, y - 0.5 * MM);
+        drawPdfText(page, fonts.cjk, '□ 熟  □ 犹豫', 157 * MM, y, 7);
+        drawPdfText(page, fonts.cjk, '□ 复习', 180 * MM, y, 7);
+      } else {
+        drawPdfText(page, fonts.latin, trimPdfText(`${word.phonetic || ''} ${word.part_of_speech || ''}`, 28), 84 * MM, y, 7);
+        drawPdfText(page, fonts.cjk, trimPdfText(word.meaning || '尚未补全释义', 29), 132 * MM, y, 8);
+      }
+    });
+    drawPdfText(page, fonts.cjk, `词轨 Wordtrail · 本页 ${segment.length} 词 · 每页最多 30 词`, 18 * MM, 12 * MM, 8);
+  }
+  function drawAnswerCardPage(pdfDocument, fonts, plan, paper, start, sheetPageCount) {
+    const page = pdfDocument.addPage(window.PDFLib.PageSizes.A4);
+    const cardPage = Math.floor(start / CARDS_PER_PAGE) + 1;
+    const cardPageCount = Math.max(1, Math.ceil(paper.items.length / CARDS_PER_PAGE));
+    const segment = paper.items.slice(start, start + CARDS_PER_PAGE);
+    drawPdfHeader(page, fonts.cjk, `${paper.label} · 错题勾选卡`, plan, sheetPageCount + cardPage);
+    drawPdfText(page, fonts.cjk, `第 ${cardPage} / ${cardPageCount} 张：答错时涂满左侧圆圈；右侧圆圈留空。`, 18 * MM, 268 * MM, 8);
+    [[10, 10], [200, 10], [10, 287], [200, 287]].forEach(([x, y]) => drawPdfMarker(page, x, y));
+    segment.forEach((item, index) => {
+      const row = Math.floor(index / 10); const column = index % 10;
+      const x = 18 + column * 17.4; const y = 297 - 41 - (row + 1) * 13.5;
+      page.drawRectangle({ x: x * MM, y: y * MM, width: 17.4 * MM, height: 13.5 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.55 });
+      page.drawCircle({ x: (x + 3.2) * MM, y: (y + 6.5) * MM, size: 1.7 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.55 });
+      page.drawCircle({ x: (x + 7.7) * MM, y: (y + 6.5) * MM, size: 1.7 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.55 });
+      drawPdfText(page, fonts.latin, String(item.no).padStart(3, '0'), (x + 11.2) * MM, (y + 5.1) * MM, 8);
+    });
+    const payload = cardPayload(plan, paper, cardPage);
+    drawPdfQr(page, payload, 18 * MM, 22 * MM, 18 * MM);
+    drawPdfText(page, fonts.cjk, '页面核验码：自动确认考试、周期与答题卡页码', 39 * MM, 28 * MM, 7.5);
+    drawPdfText(page, fonts.latin, `WT-OMR-STATIC · ${cardPage}/${cardPageCount}`, 39 * MM, 18 * MM, 8);
+  }
+  async function createPdf(plan, kind, source) {
+    if (!window.PDFLib || !window.fontkit) throw new Error('PDF 组件未加载，请刷新页面后重试');
+    const fontBytes = await loadPdfFontBytes();
+    const pdfDocument = await window.PDFLib.PDFDocument.create();
+    pdfDocument.registerFontkit(window.fontkit);
+    const paper = kind === 'study' ? null : source;
+    const list = kind === 'study' ? source : paper.items.map((item) => item.word);
+    const cjkCorpus = [plan.name, paper?.label || '', ...(kind === 'exam' ? [] : list.map((word) => word.meaning || ''))].join('');
+    const commonFont = window.fontkit.create(fontBytes.cjk);
+    const needsFallback = [...cjkCorpus].some((character) => !commonFont.hasGlyphForCodePoint(character.codePointAt(0)));
+    const cjkBytes = needsFallback ? await loadPdfFallbackFont() : fontBytes.cjk;
+    const fonts = {
+      cjk: await pdfDocument.embedFont(cjkBytes, { subset: false }),
+      latin: await pdfDocument.embedFont(fontBytes.latin, { subset: true })
+    };
+    const displayTitle = kind === 'study' ? '背诵表' : kind === 'answer' ? `${paper.label} · 答案表` : paper.label;
+    pdfDocument.setTitle(`${plan.name} · ${displayTitle}`);
+    pdfDocument.setAuthor('词轨 Wordtrail');
+    pdfDocument.setCreator('词轨 Wordtrail 0.10');
+    pdfDocument.setProducer('pdf-lib with embedded Noto fonts');
+    for (let start = 0; start < Math.max(1, list.length); start += ITEMS_PER_PAGE) drawWordSheetPage(pdfDocument, fonts, plan, kind, paper, list, start);
+    if (kind === 'exam') {
+      const sheetPageCount = Math.max(1, Math.ceil(list.length / ITEMS_PER_PAGE));
+      for (let start = 0; start < Math.max(1, paper.items.length); start += CARDS_PER_PAGE) drawAnswerCardPage(pdfDocument, fonts, plan, paper, start, sheetPageCount);
+    }
+    const bytes = await pdfDocument.save({ useObjectStreams: false });
+    return new Blob([bytes], { type: 'application/pdf' });
+  }
   function contentHash(value) { return hash(JSON.stringify(value)); }
   async function makeDocument(state, plan, kind, version) {
-    const paper = kind === 'study' ? null : paperForVersion(state, plan, version); const words = paper ? paper.items : planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length)); const snapshot = { kind, plan: plan.id, week: plan.week.id, version, words, template: 'static-pdf-omr-v1' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
+    const paper = kind === 'study' ? null : paperForVersion(state, plan, version); const words = paper ? paper.items : planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length)); const snapshot = { kind, plan: plan.id, week: plan.week.id, version, words, template: 'static-pdf-omr-v2-embedded-fonts' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
     const peers = state.documents.filter((document) => document.plan_id === plan.id && document.type === kind && document.exam_version === version); const label = kind === 'study' ? '背诵表' : kind === 'answer' ? `考试表${version}_答案` : `考试表${version}`; const record = { id: newId('doc'), type: kind, label, plan_id: plan.id, week_id: plan.week.id, exam_version: version, revision: peers.length + 1, file_name: `${safeName(plan.name)}_${plan.start_week}_${label}_rev.${peers.length + 1}.pdf`, content_hash: digest, status: 'ready', created_at: now(), snapshot };
-    await saveDocumentBlob(record.id, createPdf(plan, kind, paper || words)); state.documents.unshift(record); return record;
+    await saveDocumentBlob(record.id, await createPdf(plan, kind, paper || words)); state.documents.unshift(record); return record;
   }
 
   async function publicState(state) {
