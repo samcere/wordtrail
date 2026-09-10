@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Wordtrail OMR check</title></head>
+<body><h1>Wordtrail OMR check</h1><p id="result">RUNNING</p>
+<script src="../vendor/jsQR.js"></script>
+<script src="../omr.js?v=2"></script>
+<script>
+(async () => {
+  const output = document.querySelector('#result');
+  try {
+    const blob = await (await fetch('output/sample-exam-3.png')).blob();
+    const image = await new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob);
+    });
+    const expected = { plan_id: 'plan_sample', week_id: 'week_sample', paper_id: 'paper_sample', version: 1, item_count: 35 };
+    const scan = await WordtrailOMR.scan(image, expected);
+    if (scan.suggested_wrong_numbers.length) throw new Error(`空白卡误报 ${scan.suggested_wrong_numbers.join(',')}`);
+
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const context = canvas.getContext('2d'); context.drawImage(bitmap, 0, 0);
+    context.fillStyle = '#000';
+    const mark = (index) => {
+      const row = Math.floor(index / 10), column = index % 10;
+      const x = (18 + column * 17.4 + 3.2) * canvas.width / 210;
+      const y = (48 + row * 13.5) * canvas.height / 297;
+      context.beginPath(); context.arc(x, y, 1.25 * canvas.width / 210, 0, Math.PI * 2); context.fill();
+    };
+    mark(0); mark(34);
+    const marked = await WordtrailOMR.scan(canvas.toDataURL('image/png'), expected);
+    if (marked.suggested_wrong_numbers.join(',') !== '1,35') throw new Error(`涂点识别结果错误：${marked.suggested_wrong_numbers.join(',')}`);
+    let mismatchRejected = false;
+    try { await WordtrailOMR.scan(image, { ...expected, paper_id: 'wrong-paper' }); } catch { mismatchRejected = true; }
+    if (!mismatchRejected) throw new Error('页面不匹配时未拒绝');
+    output.textContent = `PASS · 页面核验成功 · 第 ${scan.card_page} 页 · 空白卡 0 个误报 · 正确识别 1、35 · 拒绝错误试卷`;
+  } catch (error) {
+    output.textContent = `FAIL · ${error.stack || error.message}`;
+  }
+})();
+</script></body></html>

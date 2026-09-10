@@ -1,6 +1,2 @@
-__pycache__/
-*.pyc
-tmp/
-data/
-documents/
-*.log
+node_modules/
+tests/output/

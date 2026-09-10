@@ -1,0 +1,18 @@
+{
+  "name": "wordtrail-static",
+  "version": "0.10.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dictionary": "node scripts/build-dictionary.mjs",
+    "vendor": "node scripts/copy-vendor.mjs",
+    "check": "node --check static-service.js && node --check app.js && node --check omr.js",
+    "serve": "node tests/serve.mjs"
+  },
+  "dependencies": {
+    "@techstark/opencv-js": "^4.11.0-release.1",
+    "jsqr": "^1.4.0",
+    "qrcode-generator": "^2.0.4",
+    "xlsx": "^0.18.5"
+  }
+}

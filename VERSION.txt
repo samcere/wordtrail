@@ -1,3 +1,2 @@
-Wordtrail / 词轨
-Version: 0.10
-Package: local offline edition
+词轨 Wordtrail 0.10
+完全静态版 · 无后端 · 无 server.py · 浏览器本地存储

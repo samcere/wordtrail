@@ -1,0 +1,136 @@
+{
+  "version": "ECDICT 2026.09 static",
+  "entries": 399207,
+  "shards": {
+    "a": {
+      "file": "a.json",
+      "entries": 29997,
+      "bytes": 2977353
+    },
+    "b": {
+      "file": "b.json",
+      "entries": 23078,
+      "bytes": 2313151
+    },
+    "c": {
+      "file": "c.json",
+      "entries": 35158,
+      "bytes": 3770690
+    },
+    "d": {
+      "file": "d.json",
+      "entries": 21137,
+      "bytes": 2220302
+    },
+    "e": {
+      "file": "e.json",
+      "entries": 15983,
+      "bytes": 1668716
+    },
+    "f": {
+      "file": "f.json",
+      "entries": 13592,
+      "bytes": 1458164
+    },
+    "g": {
+      "file": "g.json",
+      "entries": 13225,
+      "bytes": 1326319
+    },
+    "h": {
+      "file": "h.json",
+      "entries": 18909,
+      "bytes": 1845025
+    },
+    "i": {
+      "file": "i.json",
+      "entries": 12947,
+      "bytes": 1449035
+    },
+    "j": {
+      "file": "j.json",
+      "entries": 3201,
+      "bytes": 335261
+    },
+    "k": {
+      "file": "k.json",
+      "entries": 6459,
+      "bytes": 544216
+    },
+    "l": {
+      "file": "l.json",
+      "entries": 13442,
+      "bytes": 1325045
+    },
+    "m": {
+      "file": "m.json",
+      "entries": 27123,
+      "bytes": 2577020
+    },
+    "n": {
+      "file": "n.json",
+      "entries": 11928,
+      "bytes": 1110536
+    },
+    "o": {
+      "file": "o.json",
+      "entries": 11169,
+      "bytes": 1108676
+    },
+    "p": {
+      "file": "p.json",
+      "entries": 35848,
+      "bytes": 3642647
+    },
+    "q": {
+      "file": "q.json",
+      "entries": 1796,
+      "bytes": 198304
+    },
+    "r": {
+      "file": "r.json",
+      "entries": 17072,
+      "bytes": 1885070
+    },
+    "s": {
+      "file": "s.json",
+      "entries": 39795,
+      "bytes": 4272594
+    },
+    "t": {
+      "file": "t.json",
+      "entries": 21320,
+      "bytes": 2191094
+    },
+    "u": {
+      "file": "u.json",
+      "entries": 8404,
+      "bytes": 885177
+    },
+    "v": {
+      "file": "v.json",
+      "entries": 5888,
+      "bytes": 610900
+    },
+    "w": {
+      "file": "w.json",
+      "entries": 7625,
+      "bytes": 818002
+    },
+    "x": {
+      "file": "x.json",
+      "entries": 805,
+      "bytes": 72137
+    },
+    "y": {
+      "file": "y.json",
+      "entries": 1459,
+      "bytes": 137485
+    },
+    "z": {
+      "file": "z.json",
+      "entries": 1847,
+      "bytes": 163486
+    }
+  }
+}

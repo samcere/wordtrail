@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Wordtrail static checks</title></head>
+<body><h1>Wordtrail static checks</h1><ol id="results"></ol><p id="summary">RUNNING</p>
+<script src="../vendor/xlsx.full.min.js"></script>
+<script src="../vendor/qrcode.js"></script>
+<script src="../static-service.js?v=3"></script>
+<script>
+(async () => {
+  const results = document.querySelector('#results');
+  let failures = 0;
+  const check = (name, condition, detail = '') => {
+    const item = document.createElement('li');
+    item.textContent = `${condition ? 'PASS' : 'FAIL'} · ${name}${detail ? ` · ${detail}` : ''}`;
+    item.dataset.status = condition ? 'pass' : 'fail';
+    results.append(item);
+    if (!condition) failures++;
+  };
+  const dataUrl = (bytes, type = 'text/plain') => {
+    const view = bytes instanceof Uint8Array ? bytes : new TextEncoder().encode(bytes);
+    let binary = '';
+    for (let offset = 0; offset < view.length; offset += 0x8000) binary += String.fromCharCode(...view.subarray(offset, offset + 0x8000));
+    return `data:${type};base64,${btoa(binary)}`;
+  };
+  const pdfPageCount = async (url) => {
+    const text = new TextDecoder('iso-8859-1').decode(await (await fetch(url)).arrayBuffer());
+    return Number(text.match(/\/Type \/Pages \/Count (\d+)/)?.[1] || 0);
+  };
+  try {
+    await WordtrailService.__test.saveState({ wordbooks: [], plans: [], documents: [], active_plan_id: null });
+    const initial = await WordtrailService.request('/api/state');
+    check('没有预设词表、计划和文档', initial.wordbooks.length === 0 && initial.plans.length === 0 && initial.documents.length === 0);
+
+    const lookup = await WordtrailService.request('/api/dictionary/lookup?word=abandon');
+    check('静态分片词典可查', lookup.match_status === 'matched' && Boolean(lookup.display_meanings), lookup.display_meanings);
+
+    const csv = await WordtrailService.request('/api/import/preview', { method: 'POST', body: JSON.stringify({ filename: 'sample.csv', content: dataUrl('word,meaning\nabandon,旧翻译\nresilient,任意内容', 'text/csv') }) });
+    check('CSV 导入只识别单词列', csv.preview.length === 2 && csv.preview[0].meaning !== '旧翻译');
+    const json = await WordtrailService.request('/api/import/preview', { method: 'POST', body: JSON.stringify({ filename: 'sample.json', content: dataUrl(JSON.stringify([{ word: 'abandon', meaning: '旧翻译' }, { word: 'resilient' }]), 'application/json') }) });
+    check('JSON 导入只识别英文词', json.preview.length === 2 && json.preview[0].meaning !== '旧翻译');
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['word', 'meaning'], ['abandon', '旧翻译'], ['resilient', '任意内容']]), 'Words');
+    const excelBytes = new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }));
+    const excel = await WordtrailService.request('/api/import/preview', { method: 'POST', body: JSON.stringify({ filename: 'sample.xlsx', content: dataUrl(excelBytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') }) });
+    check('XLSX 导入可用', excel.preview.length === 2 && excel.summary.matched_count === 2);
+
+    const words = ['abandon','ability','able','about','above','absent','absorb','abstract','abuse','academic','accept','access','accident','account','accurate','achieve','acid','acquire','across','act','action','active','actual','adapt','add','address','adjust','admit','adult','advance','advice','affect','afford','afraid','after'];
+    const text = words.map((word, index) => `${word} 任意翻译${index}`).join('\n');
+    const preview = await WordtrailService.request('/api/import/preview', { method: 'POST', body: JSON.stringify({ filename: 'sample.txt', content: dataUrl(text) }) });
+    check('TXT 只提取英文并忽略原翻译', preview.preview.length === 35 && preview.summary.matched_count > 30, `${preview.preview.length} 词`);
+    const imported = await WordtrailService.request('/api/import/confirm', { method: 'POST', body: JSON.stringify({ filename: 'sample.txt', name: '自动测试词表', content: dataUrl(text), selected_words: preview.preview.map((item) => item.normalized_word), shuffle: true }) });
+    check('词表保存到浏览器', imported.wordbook.word_count === 35);
+
+    let current = await WordtrailService.request('/api/state');
+    const wordbook = current.wordbooks[0];
+    const created = await WordtrailService.request('/api/plans', { method: 'POST', body: JSON.stringify({ name: '自动测试计划', wordbook_id: wordbook.id, weekly_target: 35, start_week: '2026-09-09' }) });
+    check('按每周期数量创建计划', created.plan.weekly_target === 35 && created.plan.estimated_cycles === 1);
+
+    const study = await WordtrailService.request('/api/documents/generate', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, type: 'study' }) });
+    check('背诵表每页 30 词', await pdfPageCount(study.document.download_url) === 2);
+    const weekly = await WordtrailService.request('/api/documents/generate', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, type: 'exam', exam_version: 1 }) });
+    check('周测含 30 词分页和独立勾选卡', await pdfPageCount(weekly.document.download_url) === 3);
+    const question = await WordtrailService.request(`/api/exams/1/online?plan_id=${created.plan.id}&index=0`);
+    check('在线周测提供选项、词义和例句', question.question.choices.length === 3 && question.question.examples.length >= 2);
+    await WordtrailService.request('/api/exams/1/result', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, wrong_numbers: [1, 2] }) });
+    const retest = await WordtrailService.request('/api/documents/generate', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, type: 'exam', exam_version: 2 }) });
+    check('复测含全部错词与 20% 正确词', await pdfPageCount(retest.document.download_url) === 2);
+    await WordtrailService.request('/api/exams/2/result', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, wrong_numbers: [1] }) });
+
+    current = await WordtrailService.request('/api/state');
+    const finished = current.plans.find((plan) => plan.id === created.plan.id);
+    check('周测与复测完成后给出评级', ['S+','S','A','B','C','D'].includes(finished.week.grade));
+    check('PDF 均保存在文档中心', current.documents.length === 3);
+    const backup = await WordtrailService.exportBackup();
+    check('完整备份包含数据和 PDF', backup.type === 'application/json' && backup.size > 1000, `${backup.size} bytes`);
+  } catch (error) {
+    check('测试流程异常', false, error.stack || error.message);
+  }
+  document.querySelector('#summary').textContent = failures ? `FAILED ${failures}` : 'ALL PASSED';
+})();
+</script></body></html>
