@@ -1,4 +1,4 @@
-const CACHE = 'wordtrail-static-v010-6-pdf-fonts';
+const CACHE = 'wordtrail-static-v010-7-60-word-columns';
 const CORE = [
   './', './index.html', './styles.css', './mobile.css', './layout-fix.css', './v123.css', './v13.css',
   './app.js', './static-service.js', './omr.js', './manifest.webmanifest', './icon.svg',
