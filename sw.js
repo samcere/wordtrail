@@ -1,4 +1,4 @@
-const CACHE = 'wordtrail-static-v010-7-60-word-columns';
+const CACHE = 'wordtrail-static-v010-8-inline-meaning-300-card';
 const CORE = [
   './', './index.html', './styles.css', './mobile.css', './layout-fix.css', './v123.css', './v13.css',
   './app.js', './static-service.js', './omr.js', './manifest.webmanifest', './icon.svg',

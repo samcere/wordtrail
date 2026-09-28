@@ -6,7 +6,7 @@
   const DICTIONARY_VERSION = 'ECDICT 2026.09 · 静态分片';
   const ITEMS_PER_COLUMN = 30;
   const ITEMS_PER_PAGE = ITEMS_PER_COLUMN * 2;
-  const CARDS_PER_PAGE = 150;
+  const CARDS_PER_PAGE = 300;
   const MM = 72 / 25.4;
   const ASSET_ROOT = new URL('.', document.currentScript?.src || location.href);
   const objectUrls = new Map();
@@ -194,13 +194,6 @@
   }
   function header(commands, title, plan, page) { commands.push('0.08 0.16 0.27 rg', pdfText(title, 18 * MM, 282 * MM, 18), '0.55 0.65 0.70 RG 0.6 w', pdfLine(18 * MM, 278 * MM, 192 * MM, 278 * MM), pdfText(`${plan.name} · ${plan.start_week} · 第 ${page} 页`, 18 * MM, 271 * MM, 8)); }
   function cardPayload(plan, paper, cardPage) { const unsigned = `WT1|${plan.id}|${plan.week.id}|${paper.id}|${paper.version}|${cardPage}`; return `${unsigned}|${hash(unsigned)}`; }
-  function createLegacyPdf(plan, kind, source) {
-    const pages = []; const paper = kind === 'study' ? null : source; const list = kind === 'study' ? source : paper.items.map((item) => item.word); const title = kind === 'study' ? '背诵表' : kind === 'answer' ? `${paper.label} · 答案表` : paper.label;
-    for (let start = 0; start < Math.max(1, list.length); start += ITEMS_PER_PAGE) { const segment = list.slice(start, start + ITEMS_PER_PAGE); const commands = []; header(commands, title, plan, Math.floor(start / ITEMS_PER_PAGE) + 1); if (kind === 'exam') commands.push(pdfText('姓名：__________________　日期：__________________　看英文填写常用中文义。', 18 * MM, 259 * MM, 8)); const yHead = kind === 'exam' ? 249 * MM : 255 * MM; const headings = kind === 'exam' ? ['序号', '英文单词', '中文释义（手写）', '把握', '复盘'] : ['序号', '英文单词', '音标 / 词性', '常用释义']; const xs = kind === 'exam' ? [18, 31, 86, 157, 180] : [18, 31, 84, 132]; headings.forEach((heading, index) => commands.push(pdfText(heading, xs[index] * MM, yHead, 8))); segment.forEach((word, index) => { const y = yHead - (index + 1) * 7 * MM; const no = start + index + 1; commands.push('0.82 0.85 0.86 RG 0.35 w', pdfLine(18 * MM, y - 2 * MM, 192 * MM, y - 2 * MM), pdfLatin(String(no).padStart(2, '0'), 18 * MM, y, 8), pdfLatin(word.word.slice(0, 30), 31 * MM, y, 9)); if (kind === 'exam') commands.push(pdfLine(86 * MM, y - 0.5 * MM, 151 * MM, y - 0.5 * MM), pdfText('□ 熟　□ 犹豫', 157 * MM, y, 7), pdfText('□ 复习', 180 * MM, y, 7)); else commands.push(pdfLatin(`${word.phonetic || ''} ${word.part_of_speech || ''}`.slice(0, 28), 84 * MM, y, 7), pdfText((word.meaning || '尚未补全释义').slice(0, 29), 132 * MM, y, 8)); }); commands.push(pdfText(`词轨 Wordtrail · 本页 ${segment.length} 词 · 每页最多 30 词`, 18 * MM, 12 * MM, 8)); pages.push(commands); }
-    if (kind === 'exam') for (let start = 0; start < Math.max(1, paper.items.length); start += CARDS_PER_PAGE) { const cardPage = Math.floor(start / CARDS_PER_PAGE) + 1; const segment = paper.items.slice(start, start + CARDS_PER_PAGE); const commands = []; header(commands, `${paper.label} · 错题勾选卡`, plan, Math.ceil(list.length / ITEMS_PER_PAGE) + cardPage); commands.push(pdfText(`第 ${cardPage} / ${Math.max(1, Math.ceil(paper.items.length / CARDS_PER_PAGE))} 张：答错时涂满左侧圆圈；右侧圆圈留空。`, 18 * MM, 268 * MM, 8), ...markerCommands(10, 10), ...markerCommands(200, 10), ...markerCommands(10, 287), ...markerCommands(200, 287)); segment.forEach((item, index) => { const row = Math.floor(index / 10); const column = index % 10; const x = 18 + column * 17.4; const y = 297 - 41 - (row + 1) * 13.5; commands.push('0.48 0.57 0.62 RG 0.55 w', pdfRect(x * MM, y * MM, 17.4 * MM, 13.5 * MM), pdfCircle((x + 3.2) * MM, (y + 6.5) * MM, 1.7 * MM), pdfCircle((x + 7.7) * MM, (y + 6.5) * MM, 1.7 * MM), '0.06 0.14 0.25 rg', pdfLatin(String(item.no).padStart(3, '0'), (x + 11.2) * MM, (y + 5.1) * MM, 8)); }); const payload = cardPayload(plan, paper, cardPage); commands.push(...qrCommands(payload, 18 * MM, 22 * MM, 18 * MM), pdfText('页面核验码：自动确认考试、周期与答题卡页码', 39 * MM, 28 * MM, 7.5), pdfLatin(`WT-OMR-STATIC · ${cardPage}/${Math.max(1, Math.ceil(paper.items.length / CARDS_PER_PAGE))}`, 39 * MM, 18 * MM, 8)); pages.push(commands); }
-    return buildPdf(pages);
-  }
-
   let pdfFontBytesPromise;
   let pdfFallbackFontPromise;
   async function loadPdfFontBytes() {
@@ -285,7 +278,7 @@
       if (!count) return;
       const first = start + (column === 0 ? 0 : leftCount) + 1;
       const last = first + count - 1;
-      drawPdfText(page, fonts.cjk, `${first}-${last}  ${kind === 'exam' ? '单词 / 中文释义（手写）' : '单词 / 音标 / 常用释义'}`, x * MM, yHead * MM, 7.5);
+      drawPdfText(page, fonts.cjk, `${first}-${last}  ${kind === 'exam' ? '单词 / 中文释义（手写）' : '单词 / 常用释义'}`, x * MM, yHead * MM, 7.5);
       drawPdfLine(page, x * MM, (yHead - 2) * MM, (x + 86) * MM, (yHead - 2) * MM, 0.6, '#8ca6b3');
     });
     segment.forEach((word, index) => {
@@ -301,8 +294,7 @@
         drawFittedPdfText(page, fonts.cjk, '□ 熟  □ 疑  □ 复', (x + 53) * MM, (top - 2.3) * MM, 31 * MM, 6.3, 5.8);
         drawPdfLine(page, (x + 9) * MM, (top - 5.3) * MM, (x + 84) * MM, (top - 5.3) * MM, 0.4, '#8ca6b3');
       } else {
-        drawFittedPdfText(page, fonts.latin, `${word.phonetic || ''} ${word.part_of_speech || ''}`, (x + 46) * MM, (top - 2.3) * MM, 38 * MM, 6.7, 5.8);
-        drawFittedPdfText(page, fonts.cjk, word.meaning || '尚未补全释义', (x + 9) * MM, (top - 5.1) * MM, 75 * MM, 7.2, 6);
+        drawFittedPdfText(page, fonts.cjk, word.meaning || '尚未补全释义', (x + 46) * MM, (top - 2.3) * MM, 38 * MM, 7.2, 6);
       }
     });
     drawPdfText(page, fonts.cjk, `词轨 Wordtrail · 本页 ${segment.length} 词 · 双栏每页最多 60 词`, 18 * MM, 12 * MM, 8);
@@ -317,11 +309,11 @@
     [[10, 10], [200, 10], [10, 287], [200, 287]].forEach(([x, y]) => drawPdfMarker(page, x, y));
     segment.forEach((item, index) => {
       const row = Math.floor(index / 10); const column = index % 10;
-      const x = 18 + column * 17.4; const y = 297 - 41 - (row + 1) * 13.5;
-      page.drawRectangle({ x: x * MM, y: y * MM, width: 17.4 * MM, height: 13.5 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.55 });
-      page.drawCircle({ x: (x + 3.2) * MM, y: (y + 6.5) * MM, size: 1.7 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.55 });
-      page.drawCircle({ x: (x + 7.7) * MM, y: (y + 6.5) * MM, size: 1.7 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.55 });
-      drawPdfText(page, fonts.latin, String(item.no).padStart(3, '0'), (x + 11.2) * MM, (y + 5.1) * MM, 8);
+      const x = 18 + column * 17.4; const y = 255 - (row + 1) * 7;
+      page.drawRectangle({ x: x * MM, y: y * MM, width: 17.4 * MM, height: 7 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.35 });
+      page.drawCircle({ x: (x + 2.4) * MM, y: (y + 3.5) * MM, size: 1.1 * MM, borderColor: pdfColor('#506b7b'), borderWidth: 0.45 });
+      page.drawCircle({ x: (x + 5.8) * MM, y: (y + 3.5) * MM, size: 1.1 * MM, borderColor: pdfColor('#7a919e'), borderWidth: 0.4 });
+      drawPdfText(page, fonts.latin, String(item.no).padStart(3, '0'), (x + 8.2) * MM, (y + 2.35) * MM, 6.2);
     });
     const payload = cardPayload(plan, paper, cardPage);
     drawPdfQr(page, payload, 18 * MM, 22 * MM, 18 * MM);
@@ -358,7 +350,7 @@
   }
   function contentHash(value) { return hash(JSON.stringify(value)); }
   async function makeDocument(state, plan, kind, version) {
-    const paper = kind === 'study' ? null : paperForVersion(state, plan, version); const words = paper ? paper.items : planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length)); const snapshot = { kind, plan: plan.id, week: plan.week.id, version, words, template: 'static-pdf-omr-v3-60-word-double-column' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
+    const paper = kind === 'study' ? null : paperForVersion(state, plan, version); const words = paper ? paper.items : planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length)); const snapshot = { kind, plan: plan.id, week: plan.week.id, version, words, template: 'static-pdf-omr-v4-meaning-inline-300-card' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
     const peers = state.documents.filter((document) => document.plan_id === plan.id && document.type === kind && document.exam_version === version); const label = kind === 'study' ? '背诵表' : kind === 'answer' ? `考试表${version}_答案` : `考试表${version}`; const record = { id: newId('doc'), type: kind, label, plan_id: plan.id, week_id: plan.week.id, exam_version: version, revision: peers.length + 1, file_name: `${safeName(plan.name)}_${plan.start_week}_${label}_rev.${peers.length + 1}.pdf`, content_hash: digest, status: 'ready', created_at: now(), snapshot };
     await saveDocumentBlob(record.id, await createPdf(plan, kind, paper || words)); state.documents.unshift(record); return record;
   }

@@ -4,7 +4,7 @@
   const PAGE_WIDTH = 1680;
   const PAGE_HEIGHT = 2376;
   const PX_PER_MM = 8;
-  const CARD_SIZE = 150;
+  const CARD_SIZE = 300;
   const ASSET_ROOT = new URL('.', document.currentScript?.src || location.href);
   let openCvPromise;
 
@@ -83,6 +83,10 @@
   }
 
   function findPaperQuad(cv, source) {
+    const sourceRatio = source.cols / source.rows;
+    if (Math.abs(sourceRatio - 1 / Math.sqrt(2)) < 0.025 || Math.abs(sourceRatio - Math.sqrt(2)) < 0.025) {
+      return orderQuad([{ x: 0, y: 0 }, { x: source.cols - 1, y: 0 }, { x: source.cols - 1, y: source.rows - 1 }, { x: 0, y: source.rows - 1 }]);
+    }
     const gray = new cv.Mat();
     const blurred = new cv.Mat();
     const edges = new cv.Mat();
@@ -215,8 +219,8 @@
     for (let index = 0; index < count; index++) {
       const row = Math.floor(index / 10);
       const column = index % 10;
-      const left = diskStats(pixels, (18 + column * 17.4 + 3.2) * PX_PER_MM, (48 + row * 13.5) * PX_PER_MM);
-      const reference = diskStats(pixels, (18 + column * 17.4 + 7.7) * PX_PER_MM, (48 + row * 13.5) * PX_PER_MM);
+      const left = diskStats(pixels, (18 + column * 17.4 + 2.4) * PX_PER_MM, (45.5 + row * 7) * PX_PER_MM);
+      const reference = diskStats(pixels, (18 + column * 17.4 + 5.8) * PX_PER_MM, (45.5 + row * 7) * PX_PER_MM);
       const darkDelta = left.dark - reference.dark;
       const grayDelta = reference.mean - left.mean;
       if ((darkDelta >= 0.16 && grayDelta >= 15) || (left.dark >= 0.42 && grayDelta >= 9)) selected.push(start + index + 1);
