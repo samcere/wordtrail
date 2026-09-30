@@ -1,6 +1,6 @@
-const CACHE = 'wordtrail-static-v010-8-inline-meaning-300-card';
+const CACHE = 'wordtrail-static-v010-9-interface-refresh';
 const CORE = [
-  './', './index.html', './styles.css', './mobile.css', './layout-fix.css', './v123.css', './v13.css',
+  './', './index.html', './interface.css',
   './app.js', './static-service.js', './omr.js', './manifest.webmanifest', './icon.svg',
   './vendor/xlsx.full.min.js', './vendor/jsQR.js', './vendor/qrcode.js',
   './vendor/pdf-lib.min.js', './vendor/fontkit.umd.min.js',

@@ -46,7 +46,7 @@
 
 ## 目录
 
-- `index.html` / `*.css` / `app.js`：网站界面。
+- `index.html` / `interface.css` / `app.js`：网站界面、电脑与手机共用样式及交互逻辑。
 - `static-service.js`：浏览器内的数据、计划、测试、PDF 和备份逻辑。
 - `omr.js`：纸面答题卡核验与识别。
 - `dictionary/`：已分片的英汉词典。
