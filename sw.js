@@ -1,10 +1,8 @@
-const CACHE = 'wordtrail-static-v010-9-interface-refresh';
+const CACHE = 'wordtrail-static-v015-workbench';
 const CORE = [
   './', './index.html', './interface.css',
-  './app.js', './static-service.js', './omr.js', './manifest.webmanifest', './icon.svg',
-  './vendor/xlsx.full.min.js', './vendor/jsQR.js', './vendor/qrcode.js',
-  './vendor/pdf-lib.min.js', './vendor/fontkit.umd.min.js',
-  './vendor/WordtrailSansSC-Common.ttf', './vendor/WordtrailSansSC-Regular.ttf',
+  './workbench.js', './app.js', './static-service.js', './wrongbook-store.js', './wrongbook.js', './wrongbook-ai.js', './wrongbook-prompt.js', './manifest.webmanifest', './icon.svg',
+  './vendor/WordtrailSansSC-Common.ttf',
   './vendor/NotoSans-Regular.ttf', './dictionary/manifest.json'
 ];
 
@@ -13,7 +11,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('wordtrail-static-') && key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', (event) => {

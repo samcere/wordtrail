@@ -1,67 +1,94 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#132c40" />
-    <meta name="description" content="词轨：无需后端的本地优先背单词计划、周测、复测与 PDF 文档工具。" />
-    <title>词轨 · 学习工作台</title>
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="interface.css" />
-  </head>
-  <body>
-    <a class="skip-link" href="#main">跳到主要内容</a>
-    <div class="app-shell">
-      <aside class="sidebar" aria-label="主导航">
-        <a class="brand" href="#dashboard"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>词轨<small>WORDTRAIL</small></span></a>
-        <p class="rail-caption">从词表到复测，<br />一步一步走完本周。</p>
-        <nav class="side-nav">
-          <a class="nav-link active" href="#dashboard" data-view="dashboard"><svg aria-hidden="true"><use href="#i-grid" /></svg><span>工作台</span></a>
-          <a class="nav-link" href="#wordbooks" data-view="wordbooks"><svg aria-hidden="true"><use href="#i-book" /></svg><span>词表</span><b id="book-total">0</b></a>
-          <a class="nav-link" href="#plans" data-view="plans"><svg aria-hidden="true"><use href="#i-route" /></svg><span>学习计划</span></a>
-          <a class="nav-link" href="#documents" data-view="documents"><svg aria-hidden="true"><use href="#i-file" /></svg><span>文档</span><b id="doc-total">0</b></a>
-        </nav>
-        <div class="side-actions"><button class="outline-dark" type="button" data-action="import"><svg aria-hidden="true"><use href="#i-upload" /></svg>导入词表</button><p><span class="green-dot"></span>内容保存在当前浏览器</p></div>
-      </aside>
-      <main id="main">
-        <header class="topbar"><div><span class="topbar-label">WORDTRAIL /</span> <span id="crumb">工作台</span></div><div class="top-actions"><button class="secondary-button" type="button" data-action="import"><svg aria-hidden="true"><use href="#i-upload" /></svg>导入词表</button><button class="primary-button" type="button" data-action="new-plan"><svg aria-hidden="true"><use href="#i-plus" /></svg>新建计划</button></div></header>
-        <section id="dashboard" class="view active" aria-labelledby="dash-title">
-          <div class="view-heading"><div><p class="eyebrow">LEARNING DESK / 学习桌面</p><h1 id="dash-title">每周有迹可循。</h1><p class="lede">选好词表，定下节奏，背诵、周测和复测都在这里继续。</p></div></div>
-          <div id="empty-dashboard" class="empty-state hidden"></div>
-          <div id="dashboard-content">
-            <section class="cycle-hero" aria-labelledby="plan-name"><div class="cycle-copy"><span class="micro">CURRENT CYCLE / 当前计划</span><h2 id="plan-name">—</h2><p id="plan-summary">—</p><div class="hero-actions"><button class="primary-button" type="button" data-action="generate-study"><svg aria-hidden="true"><use href="#i-download" /></svg>下载背诵表</button><button class="secondary-button" type="button" data-action="manage-words">查看本周词条</button></div></div><div class="week-stamp" id="week-stamp"></div></section>
-            <div class="workspace-grid"><section class="card current-paper" id="current-paper" aria-label="本周考试"></section><section class="card word-list-card"><div class="card-head"><div><p class="eyebrow">WORD PREVIEW / 词条预览</p><h2>本周背什么</h2></div><button class="text-button" type="button" data-action="manage-words">查看全部 <svg aria-hidden="true"><use href="#i-arrow" /></svg></button></div><div id="week-words" class="word-list"></div></section></div>
-          </div>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f8f7">
+  <meta name="description" content="背单词与错题整理，按需打开。">
+  <title>学习工作台</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="interface.css">
+  <script src="workbench.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到学习内容</a>
+  <header class="header">
+    <a class="brand" href="#" aria-label="返回工作台"><span>学习工作台</span></a>
+    <details class="data-menu"><summary aria-label="备份与恢复">备份</summary><div><button type="button" data-desk="backup">下载完整备份</button><button type="button" data-desk="restore">导入备份</button></div></details>
+  </header>
+  <main id="main" class="main" tabindex="-1">
+    <nav class="tool-launcher" aria-label="学习工具"><button type="button" data-tool="words" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6a2 2 0 0 1 2 2v14a3 3 0 0 0-3-2H4zM20 4h-6a2 2 0 0 0-2 2v14a3 3 0 0 1 3-2h5z"/></svg>背单词</button><button type="button" data-tool="wrongbook" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h12v6M4 3v18h16V11M8 7h4M8 11h3m3 7 7-7-3-3-7 7-1 4z"/></svg>错题整理</button></nav>
+    <p id="desk-loading" class="caption" role="status" hidden></p>
+    <section id="wordtrail-tool" aria-label="背单词" hidden>
+    <div class="tool-heading"><h1>背单词</h1><div class="header-actions"><button type="button" class="quiet" data-action="manage">管理</button><button type="button" id="header-import" class="quiet hidden" data-action="setup">导入词表 +</button></div></div>
+    <section id="empty" class="empty" aria-labelledby="empty-title">
+      <span class="empty-mark" aria-hidden="true">Aa</span>
+      <h1 id="empty-title">导入词表</h1>
+      <p>选择单词文件，设置每周学习数量。</p>
+      <button type="button" class="primary" data-action="setup">选择词表文件 <span aria-hidden="true">→</span></button>
+      <p class="caption">支持 TXT、JSON、CSV 和 Excel · 自动补全中文释义</p>
+      <button type="button" class="text" id="existing-start" hidden data-action="manage">使用已有词表</button>
+    </section>
+    <section id="learning" class="hidden" aria-labelledby="learning-title">
+      <div class="plan-heading">
+        <div><label class="caption" for="plan-select">正在学习</label><div class="plan-name"><h1 id="learning-title" class="sr-only">本周学习</h1><select id="plan-select" aria-label="切换学习计划"></select><button type="button" class="icon-button" data-action="edit-current" aria-label="编辑当前计划"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4-1L20 7l-3-3L5 16zM14 7l3 3"/></svg></button></div><p id="plan-meta" class="muted"></p></div>
+        <span id="cycle-label" class="cycle-label"></span>
+      </div>
+      <ol id="steps" class="steps" aria-label="本周进度"></ol>
+      <div id="last-result" class="last-result hidden" role="status"></div>
+      <section class="workspace" aria-label="学习与测试">
+        <div class="workspace-tabs" role="tablist" aria-label="学习模式"><button id="study-tab" type="button" role="tab" aria-controls="study-panel" aria-selected="true" tabindex="0" data-action="study">背单词</button><button id="test-tab" type="button" role="tab" aria-controls="test-panel" aria-selected="false" tabindex="-1" data-action="test">测一测</button></div>
+        <section id="study-panel" role="tabpanel" aria-labelledby="study-tab">
+          <div class="panel-toolbar"><div><h2 id="word-count">本周单词</h2><p id="study-hint" class="caption">点击释义展开，遮住释义自测。</p></div><div class="inline-actions"><button type="button" class="quiet" id="meaning-toggle" data-action="toggle-meaning" aria-pressed="false">遮住释义</button><button type="button" class="quiet" data-action="study-pdf">下载背诵表 <span aria-hidden="true">↓</span></button></div></div>
+          <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input id="study-search" type="search" aria-label="查找本周单词" placeholder="查找单词"></label>
+          <div id="word-list" class="word-list"></div>
+          <div id="study-pagination" class="pagination"></div>
+          <div id="study-next" class="study-next"></div>
         </section>
-        <section id="wordbooks" class="view" aria-labelledby="wordbook-title"><div class="view-heading compact"><div><p class="eyebrow">LIBRARY / 词库</p><h1 id="wordbook-title">我的词表</h1><p class="lede">只导入英文词，常用中文释义由内置词典补全。支持 TXT、JSON、CSV 和 Excel。</p></div><button class="primary-button" type="button" data-action="import"><svg aria-hidden="true"><use href="#i-upload" /></svg>导入词表</button></div><div id="wordbook-list" class="book-grid"></div></section>
-        <section id="plans" class="view" aria-labelledby="plan-title"><div class="view-heading compact"><div><p class="eyebrow">ROUTES / 学习路线</p><h1 id="plan-title">学习计划</h1><p class="lede">设定每周新词数量，后续周期自动加入旧词复习。</p></div><button class="primary-button" type="button" data-action="new-plan"><svg aria-hidden="true"><use href="#i-plus" /></svg>新建计划</button></div><div id="plans-list" class="plan-grid"></div></section>
-        <section id="documents" class="view" aria-labelledby="documents-title"><div class="view-heading compact"><div><p class="eyebrow">FILES / 学习文件</p><h1 id="documents-title">文档</h1><p class="lede">生成的 PDF 保存在当前浏览器，可随时预览或再次下载。</p></div><div class="document-head-actions"><button class="secondary-button" type="button" data-action="export-backup"><svg aria-hidden="true"><use href="#i-download" /></svg>备份数据</button><button class="secondary-button" type="button" data-action="import-backup"><svg aria-hidden="true"><use href="#i-upload" /></svg>恢复备份</button></div></div><div class="local-storage-note"><strong>关于存储</strong><span>词表、计划和 PDF 保存在当前浏览器。换设备前，请先下载完整备份。</span></div><div class="document-filter" aria-label="筛选文档"><button class="filter active" type="button" data-filter="all">全部</button><button class="filter" type="button" data-filter="study">背诵表</button><button class="filter" type="button" data-filter="exam">考试表</button><button class="filter" type="button" data-filter="answer">答案表</button></div><div id="document-list" class="document-list"></div></section>
-      </main>
-    </div>
-    <nav class="mobile-nav" aria-label="移动端主导航"><a class="active" href="#dashboard" data-view="dashboard"><svg aria-hidden="true"><use href="#i-grid" /></svg><span>工作台</span></a><a href="#wordbooks" data-view="wordbooks"><svg aria-hidden="true"><use href="#i-book" /></svg><span>词表</span></a><a href="#plans" data-view="plans"><svg aria-hidden="true"><use href="#i-route" /></svg><span>计划</span></a><a href="#documents" data-view="documents"><svg aria-hidden="true"><use href="#i-file" /></svg><span>文档</span></a></nav>
-    <dialog id="import-dialog" class="dialog import-dialog"><form method="dialog"><button class="dialog-close" aria-label="关闭"><svg aria-hidden="true"><use href="#i-close" /></svg></button></form><p class="eyebrow">IMPORT / 导入</p><h2>导入词表</h2><p class="dialog-intro">选择 TXT、JSON、CSV 或 Excel 文件。只提取英文词，原文件里的翻译会由内置词典重新补全。</p><label class="drop-zone" for="file-input"><input id="file-input" type="file" accept=".csv,.xls,.xlsx,.txt,.json,text/plain,application/json" /><svg aria-hidden="true"><use href="#i-upload" /></svg><b id="file-label">选择文件</b><span>支持 .txt、.json、.csv、.xls、.xlsx</span></label><label class="field-label">词表名称<input id="import-name" type="text" placeholder="留空则使用文件名" /></label><label class="shuffle-choice"><input id="import-shuffle" type="checkbox" /><span>乱序导入</span><small>打乱词表中的单词顺序。</small></label><div id="import-error" class="import-error hidden" role="alert" tabindex="-1"></div><section id="import-preview" class="import-preview hidden" aria-live="polite"><div class="preview-head"><div><p class="micro">REVIEW / 核对</p><h3>识别结果</h3></div><span id="preview-count" class="preview-count">0 词</span></div><p id="preview-summary" class="preview-summary"></p><div class="preview-toolbar"><button type="button" class="text-button" data-action="select-all-import">全选</button><button type="button" class="text-button" data-action="deselect-all-import">全部取消</button></div><div id="preview-list" class="preview-list" aria-label="待导入的单词预览"></div><p class="preview-help">取消勾选可排除词条；“待补全”词也可以保留。</p></section><div class="dialog-foot"><button type="button" class="text-button" data-action="download-template">下载示例模板</button><button type="button" class="secondary-button" id="preview-import" data-action="preview-import">识别并预览</button><button type="button" class="primary-button hidden" id="confirm-import" data-action="confirm-import">确认导入</button></div></dialog>
-    <dialog id="plan-dialog" class="dialog"><form method="dialog"><button class="dialog-close" aria-label="关闭"><svg aria-hidden="true"><use href="#i-close" /></svg></button></form><p class="eyebrow">NEW CYCLE PLAN</p><h2>设定你的学习节奏</h2><p>选择词表和每周期学习数量，词轨会自动排出新词与旧词复习。</p><label class="field-label">计划名称<input id="new-plan-name" type="text" value="我的新计划" /></label><label class="field-label">关联词表<select id="new-plan-book"></select></label><label class="field-label">每周期学习数量<input id="new-plan-target" type="number" min="1" value="30" /></label><p id="plan-estimate" class="plan-estimate"></p><label class="field-label">开始周<input id="new-plan-date" type="date" /></label><button class="primary-button full" data-action="confirm-plan">创建周期计划</button></dialog>
-    <dialog id="words-dialog" class="dialog plan-dialog"><form method="dialog"><button class="dialog-close" aria-label="关闭"><svg aria-hidden="true"><use href="#i-close" /></svg></button></form><p class="eyebrow">THIS CYCLE / 本周期</p><h2>本周词条</h2><p id="words-dialog-help"></p><div id="active-plan-words" class="check-list"></div></dialog>
-    <dialog id="book-dialog" class="dialog plan-dialog"><form method="dialog"><button class="dialog-close" aria-label="关闭"><svg aria-hidden="true"><use href="#i-close" /></svg></button></form><p class="eyebrow">WORD BOOK / 词表</p><h2 id="book-detail-title">词表</h2><p id="book-detail-meta"></p><label class="field-label">词表名称<input id="book-edit-name" type="text" /></label><label class="field-label">追加英文单词（每行一个）<textarea id="book-add-words" rows="3" placeholder="abandon&#10;resilient"></textarea></label><button class="secondary-button full" type="button" data-action="save-book">保存词表修改</button><div id="book-detail-plans" class="book-plan-list"></div><div class="list-toolbar"><label class="field-label">查找单词<input id="book-search" type="search" placeholder="输入英文单词" /></label><span id="book-visible-count"></span></div><p id="book-word-help" class="preview-help"></p><div id="book-detail-words" class="check-list" aria-label="词表单词预览"></div><div class="list-pagination"><button class="secondary-button" type="button" data-action="book-prev">上一页</button><span id="book-page-label"></span><button class="secondary-button" type="button" data-action="book-next">下一页</button></div><div class="dialog-foot"><button class="secondary-button" type="button" data-action="delete-selected-words">删除选中词</button><button class="text-button danger-button" type="button" data-action="delete-book">删除词表</button></div></dialog>
-    <dialog id="plan-edit-dialog" class="dialog"><form method="dialog"><button class="dialog-close" aria-label="关闭"><svg aria-hidden="true"><use href="#i-close" /></svg></button></form><p class="eyebrow">EDIT LEARNING PLAN</p><h2>编辑学习计划</h2><input id="edit-plan-id" type="hidden" /><label class="field-label">计划名称<input id="edit-plan-name" type="text" /></label><label class="field-label">每周期学习数量<input id="edit-plan-target" type="number" min="1" /></label><label class="field-label">开始周<input id="edit-plan-date" type="date" /></label><div class="dialog-foot"><button class="primary-button" data-action="save-plan">保存修改</button><button class="text-button danger-button" data-action="delete-plan">删除计划</button></div></dialog>
-    <dialog id="online-dialog" class="dialog online-dialog"><form method="dialog"><button class="dialog-close" aria-label="暂停答题并关闭"><svg aria-hidden="true"><use href="#i-close" /></svg></button></form><p id="online-kicker" class="eyebrow">ONLINE TEST / 在线答题</p><p id="online-count" class="online-count"></p><progress id="online-progress" max="100" value="0" aria-label="答题进度"></progress><h2 id="online-word">—</h2><div id="online-options" class="online-options"></div><section id="online-feedback" class="online-feedback hidden" aria-live="polite"></section><button id="online-next" class="primary-button full hidden" type="button" data-action="online-next">下一题</button><p class="online-pause-note">关闭后可在本次浏览中继续答题。</p></dialog>
-    <input id="scan-input" class="hidden" type="file" accept="image/png,image/jpeg" />
-    <input id="backup-input" class="hidden" type="file" accept="application/json,.json" />
-    <div id="toast" class="toast" role="status" aria-live="polite"><svg aria-hidden="true"><use href="#i-check" /></svg><span></span></div>
-    <svg class="icons" aria-hidden="true">
-      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol><symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5zM4 5.5v16M8 7h8M8 11h8"/></symbol><symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 16V8a2 2 0 0 1 2-2h8M18 8v8a2 2 0 0 1-2 2H8"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 13h6M9 17h6"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol><symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H4V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7h-2M6 14h12v7H6z"/></symbol><symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol><symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 20 4.2-1 10.6-10.6a2.1 2.1 0 0 0-3-3L5.2 16zM13.8 7.4l2.8 2.8"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 2 5.3M20 4v7h-7"/></symbol><symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol><symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></symbol><symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2 2M14 9l2 2"/></symbol>
-    </svg>
-    <script src="vendor/xlsx.full.min.js"></script>
-    <script src="vendor/jsQR.js"></script>
-    <script src="vendor/qrcode.js"></script>
-    <script src="vendor/pdf-lib.min.js"></script>
-    <script src="vendor/fontkit.umd.min.js"></script>
-    <script src="omr.js"></script>
-    <script src="static-service.js"></script>
-    <script src="app.js"></script>
-  </body>
+        <section id="test-panel" role="tabpanel" aria-labelledby="test-tab" hidden><div id="test-content"></div></section>
+      </section>
+    </section>
+    <details id="history" class="history"><summary>下载记录 <span id="history-count" class="caption"></span></summary><div id="history-list"></div><div id="history-pagination" class="pagination"></div></details>
+    </section>
+    <section id="wrongbook-tool" aria-label="错题整理" hidden></section>
+  </main>
+
+  <dialog id="setup-dialog" aria-labelledby="setup-title">
+    <div class="dialog-heading"><h2 id="setup-title">导入并开始学习</h2><button type="button" class="icon-button" data-close aria-label="关闭"><span aria-hidden="true">×</span></button></div>
+    <form id="setup-form">
+      <div id="setup-file-area"><label class="file-picker" for="import-file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3M7 8l5-5 5 5M5 15v5h14v-5"/></svg><strong id="file-label">选择单词文件</strong><span class="caption">TXT / JSON / CSV / Excel</span><input id="import-file" type="file" accept=".txt,.json,.csv,.xls,.xlsx"></label></div>
+      <p id="setup-existing" class="existing-book" hidden></p>
+      <div id="import-status" class="import-status" role="status" hidden></div>
+      <details id="import-preview" class="preview" hidden><summary>查看识别结果 <span id="preview-count"></span></summary><div id="preview-list" class="preview-list"></div><p class="caption">只提取英文词，中文释义由词典补全。</p></details>
+      <label class="field" for="setup-target">每周学多少个词<input id="setup-target" type="number" min="1" step="1" required placeholder="例如 60" inputmode="numeric"></label>
+      <p id="setup-estimate" class="caption">从第二周起，会穿插约 10% 的旧词复习。</p>
+      <details class="options"><summary>更多选项</summary><label class="field" for="setup-name">名称<input id="setup-name" maxlength="80" placeholder="默认使用词表名称"></label><label id="shuffle-label" class="check-row"><input id="setup-shuffle" type="checkbox">乱序导入</label></details>
+      <p id="setup-error" class="inline-error" role="alert" hidden></p>
+      <button id="setup-submit" type="submit" class="primary full" disabled>开始学习</button>
+    </form>
+  </dialog>
+
+  <dialog id="manage-dialog" aria-labelledby="manage-title">
+    <div class="dialog-heading"><h2 id="manage-title">管理</h2><button type="button" class="icon-button" data-close aria-label="关闭"><span aria-hidden="true">×</span></button></div>
+    <section class="manage-section"><div class="section-heading"><h3>词表</h3><button type="button" class="text" data-action="setup">导入词表 +</button></div><div id="manage-books"></div></section>
+    <section class="manage-section"><h3>学习计划</h3><div id="manage-plans"></div></section>
+  </dialog>
+
+  <dialog id="plan-dialog" aria-labelledby="plan-dialog-title">
+    <div class="dialog-heading"><h2 id="plan-dialog-title">编辑计划</h2><button type="button" class="icon-button" data-close aria-label="关闭"><span aria-hidden="true">×</span></button></div>
+    <form id="plan-form"><input id="edit-plan-id" type="hidden"><label class="field" for="edit-plan-name">名称<input id="edit-plan-name" required maxlength="80"></label><label class="field" for="edit-plan-target">每周学习数量<input id="edit-plan-target" type="number" min="1" step="1" required></label><p class="caption">未开始测试时，本周立即调整；已开始测试则从下周生效。</p><p id="plan-error" class="inline-error" role="alert" hidden></p><div class="form-actions"><button type="button" class="text danger" data-action="delete-plan">删除计划</button><button type="submit" class="primary">保存</button></div></form>
+  </dialog>
+
+  <dialog id="book-dialog" class="wide-dialog" aria-labelledby="book-dialog-title">
+    <div class="dialog-heading"><h2 id="book-dialog-title">编辑词表</h2><button type="button" class="icon-button" data-close aria-label="关闭"><span aria-hidden="true">×</span></button></div>
+    <form id="book-form"><input id="edit-book-id" type="hidden"><label class="field" for="edit-book-name">名称<input id="edit-book-name" required maxlength="80"></label><details class="options"><summary>追加单词</summary><label class="field" for="book-add">每行一个英文词<textarea id="book-add" rows="3"></textarea></label></details><div class="form-actions"><button type="button" class="text danger" data-action="delete-book">删除词表</button><button type="submit" class="secondary">保存修改</button></div><p id="book-error" class="inline-error" role="alert" hidden></p></form>
+    <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input id="book-search" type="search" placeholder="查找词表中的单词" aria-label="查找词表中的单词"></label><div id="book-words" class="book-words"></div><div id="book-pagination" class="pagination"></div><div class="selection-footer"><span id="book-selection" class="caption"></span><button type="button" class="text danger" id="delete-words" data-action="delete-words" disabled>删除选中词</button></div><p class="caption">正在被计划使用的单词暂时不能删除。</p>
+  </dialog>
+
+  <input id="scan-file" type="file" accept="image/jpeg,image/png" hidden>
+  <input id="backup-file" type="file" accept=".json,application/json" hidden>
+  <input id="desk-restore-file" type="file" accept=".json,application/json" hidden>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
 </html>

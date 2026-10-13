@@ -4,6 +4,8 @@
 <body><h1>Wordtrail static checks</h1><ol id="results"></ol><p id="summary">RUNNING</p>
 <script src="../vendor/xlsx.full.min.js"></script>
 <script src="../vendor/qrcode.js"></script>
+<script src="../vendor/pdf-lib.min.js"></script>
+<script src="../vendor/fontkit.umd.min.js"></script>
 <script src="../static-service.js?v=3"></script>
 <script>
 (async () => {
@@ -23,8 +25,7 @@
     return `data:${type};base64,${btoa(binary)}`;
   };
   const pdfPageCount = async (url) => {
-    const text = new TextDecoder('iso-8859-1').decode(await (await fetch(url)).arrayBuffer());
-    return Number(text.match(/\/Type \/Pages \/Count (\d+)/)?.[1] || 0);
+    return (await PDFLib.PDFDocument.load(await (await fetch(url)).arrayBuffer())).getPageCount();
   };
   try {
     await WordtrailService.__test.saveState({ wordbooks: [], plans: [], documents: [], active_plan_id: null });
@@ -57,11 +58,11 @@
     check('按每周期数量创建计划', created.plan.weekly_target === 35 && created.plan.estimated_cycles === 1);
 
     const study = await WordtrailService.request('/api/documents/generate', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, type: 'study' }) });
-    check('背诵表每页 30 词', await pdfPageCount(study.document.download_url) === 2);
+    check('背诵表每页 60 词双栏', await pdfPageCount(study.document.download_url) === 1);
     const weekly = await WordtrailService.request('/api/documents/generate', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, type: 'exam', exam_version: 1 }) });
-    check('周测含 30 词分页和独立勾选卡', await pdfPageCount(weekly.document.download_url) === 3);
+    check('周测含 60 词分页和独立勾选卡', await pdfPageCount(weekly.document.download_url) === 2);
     const question = await WordtrailService.request(`/api/exams/1/online?plan_id=${created.plan.id}&index=0`);
-    check('在线周测提供选项、词义和例句', question.question.choices.length === 3 && question.question.examples.length >= 2);
+    check('在线周测提供选项和真实词义，不伪造例句', question.question.choices.length === 3 && question.question.meaning && question.question.examples.length === 0);
     await WordtrailService.request('/api/exams/1/result', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, wrong_numbers: [1, 2] }) });
     const retest = await WordtrailService.request('/api/documents/generate', { method: 'POST', body: JSON.stringify({ plan_id: created.plan.id, type: 'exam', exam_version: 2 }) });
     check('复测含全部错词与 20% 正确词', await pdfPageCount(retest.document.download_url) === 2);
@@ -71,8 +72,40 @@
     const finished = current.plans.find((plan) => plan.id === created.plan.id);
     check('周测与复测完成后给出评级', ['S+','S','A','B','C','D'].includes(finished.week.grade));
     check('PDF 均保存在文档中心', current.documents.length === 3);
+    const legacy = await WordtrailService.__test.loadState();
+    legacy.learning = { version: 1, records: { retained: { mistakes: 3 } } };
+    await WordtrailService.__test.saveState(legacy);
     const backup = await WordtrailService.exportBackup();
     check('完整备份包含数据和 PDF', backup.type === 'application/json' && backup.size > 1000, `${backup.size} bytes`);
+    await WordtrailService.__test.saveState({ wordbooks: [], plans: [], documents: [] });
+    await WordtrailService.importBackup(new File([backup], 'backup.json', { type: 'application/json' }));
+    const restored = await WordtrailService.request('/api/state');
+    check('恢复保留 PDF 和旧学习记录', restored.documents.length === 3 && (await WordtrailService.__test.loadState()).learning.records.retained.mistakes === 3);
+    const post = (path, body) => WordtrailService.request(path, { method: 'POST', body: JSON.stringify(body) });
+    let rejected = false;
+    try { await post('/api/setup', { filename: 'invalid.txt', content: dataUrl('abandon'), weekly_target: 1.5 }); } catch { rejected = true; }
+    check('非法数量不遗留半个导入结果', rejected && (await WordtrailService.request('/api/state')).wordbooks.length === restored.wordbooks.length);
+    const single = await post('/api/setup', { filename: 'single.txt', content: dataUrl('ability\nable\nabout'), weekly_target: 1, name: '每周一词' });
+    await WordtrailService.request(`/api/exams/1/online?plan_id=${single.plan.id}&index=0`);
+    rejected = false;
+    try { await post('/api/exams/1/result', { plan_id: single.plan.id, wrong_numbers: [0, 999] }); } catch { rejected = true; }
+    check('拒绝超出试卷的错题号', rejected);
+    await post('/api/exams/1/result', { plan_id: single.plan.id, wrong_numbers: [] });
+    rejected = false;
+    try { await post('/api/exams/1/result', { plan_id: single.plan.id, wrong_numbers: [] }); } catch { rejected = true; }
+    check('拒绝重复提交测试结果', rejected);
+    await WordtrailService.request(`/api/exams/2/online?plan_id=${single.plan.id}&index=0`);
+    await post('/api/exams/2/result', { plan_id: single.plan.id, wrong_numbers: [] });
+    const next = (await WordtrailService.request('/api/state')).plans.find(plan => plan.id === single.plan.id);
+    check('每周一词不会因历史复习超过目标', next.week.number === 2 && next.week.word_ids.length === 1);
+    await post(`/api/plans/${single.plan.id}/delete`, {});
+    await post(`/api/wordbooks/${single.wordbook.id}`, { name: '重命名词表', add_words: 'after' });
+    const editable = (await WordtrailService.request('/api/state')).wordbooks.find(book => book.id === single.wordbook.id);
+    check('词表可改名并追加词条', editable.name === '重命名词表' && editable.word_count === 4);
+    await post(`/api/wordbooks/${editable.id}/delete-words`, { word_ids: [editable.words[0].id] });
+    check('无关联词条可删除', (await WordtrailService.request('/api/state')).wordbooks.find(book => book.id === editable.id).word_count === 3);
+    await post(`/api/wordbooks/${editable.id}/delete`, {});
+    check('词表与计划可删除', (await WordtrailService.request('/api/state')).wordbooks.length === restored.wordbooks.length);
   } catch (error) {
     check('测试流程异常', false, error.stack || error.message);
   }

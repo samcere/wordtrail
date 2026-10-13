@@ -1,13 +1,13 @@
 {
-  "name": "词轨 Wordtrail",
-  "short_name": "词轨",
-  "description": "本地优先的背单词计划、周测、复测与 PDF 文档工具",
+  "name": "学习工作台",
+  "short_name": "学习工作台",
+  "description": "背单词与错题整理，按需打开。",
   "lang": "zh-CN",
-  "start_url": "./#dashboard",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#faf9f5",
-  "theme_color": "#12233f",
+  "background_color": "#f6f8f7",
+  "theme_color": "#176647",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

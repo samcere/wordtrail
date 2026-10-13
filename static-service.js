@@ -18,7 +18,7 @@
   const newId = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const normal = (value) => String(value || '').trim().replaceAll('’', "'").toLowerCase();
   const safeName = (value) => String(value || '').replace(/[\\/:*?"<>|]+/g, '_').trim().slice(0, 48) || '词轨文档';
-  const shuffled = (items) => [...items].sort(() => Math.random() - 0.5);
+  const shuffled = (items) => { const copy = [...items]; for (let i = copy.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [copy[i], copy[j]] = [copy[j], copy[i]]; } return copy; };
   const find = (items, id) => items.find((item) => item.id === id);
 
   function openDatabase() {
@@ -51,7 +51,6 @@
   }
   const saveState = (state) => storeAction('state', 'readwrite', (store) => store.put(state, 'main'));
   const saveDocumentBlob = (id, blob) => storeAction('documents', 'readwrite', (store) => store.put({ id, blob }));
-  const loadDocumentBlob = (id) => storeAction('documents', 'readonly', (store) => store.get(id));
   const loadAllDocumentBlobs = () => storeAction('documents', 'readonly', (store) => store.getAll());
 
   function planFor(state, id) {
@@ -75,6 +74,17 @@
     const review = Math.max(1, Math.round(target * 0.1));
     return 1 + Math.ceil((total - target) / Math.max(1, target - review));
   }
+  function weeklyTarget(value) {
+    const target = Number(value);
+    if (!Number.isSafeInteger(target) || target < 1) throw new Error('每周数量应为大于 0 的整数');
+    return target;
+  }
+  function createPlan(state, book, body) {
+    const target = weeklyTarget(body.weekly_target);
+    const plan = { id: newId('plan'), name: String(body.name || '').trim() || book.name, wordbook_id: book.id, start_week: body.start_week || new Date().toISOString().slice(0, 10), weekly_target: target, estimated_cycles: estimateCycles(book.words.length, target), status: 'active', cycles: [], created_at: now() };
+    state.plans.push(plan); state.active_plan_id = plan.id; buildCycle(state, plan);
+    return plan;
+  }
   function buildCycle(state, plan) {
     const book = bookFor(state, plan.wordbook_id); const cycles = plan.cycles ||= [];
     const target = Math.max(1, Number(plan.weekly_target || book.words.length || 1));
@@ -82,9 +92,8 @@
     const unseen = book.words.filter((word) => !learned.has(word.id)).map((word) => word.id);
     if (!unseen.length) return null;
     const number = cycles.length + 1; const history = cycles.flatMap((cycle) => cycle.word_ids || []);
-    let reviewCount = number > 1 ? Math.min(history.length, Math.max(1, Math.round(target * 0.1))) : 0;
+    const reviewCount = number > 1 ? Math.min(history.length, target - 1, Math.max(1, Math.round(Math.min(target, unseen.length / .9) * .1))) : 0;
     const newCount = Math.min(unseen.length, Math.max(1, target - reviewCount));
-    if (unseen.length < target - reviewCount) reviewCount = Math.min(history.length, Math.max(0, target - newCount));
     const wrongFirst = [...cycles].reverse().flatMap((cycle) => cycle.wrong_word_ids || []);
     const reviewPool = [...new Set([...wrongFirst, ...[...history].reverse()])];
     const review = shuffled(reviewPool).slice(0, reviewCount);
@@ -174,25 +183,6 @@
   }
 
   function hash(value) { let output = 2166136261; for (const char of String(value)) { output ^= char.charCodeAt(0); output = Math.imul(output, 16777619); } return (output >>> 0).toString(16).padStart(8, '0'); }
-  function pdfHex(value) { return [...String(value)].map((char) => char.charCodeAt(0).toString(16).padStart(4, '0')).join(''); }
-  function pdfText(value, x, y, size = 9) { return `BT /F1 ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm <FEFF${pdfHex(value)}> Tj ET`; }
-  function pdfLatin(value, x, y, size = 9) { return `BT /F2 ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${String(value).replace(/([\\()])/g, '\\$1')}) Tj ET`; }
-  const pdfLine = (x1, y1, x2, y2) => `${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`;
-  const pdfRect = (x, y, width, height, fill = false) => `${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re ${fill ? 'f' : 'S'}`;
-  function pdfCircle(x, y, radius, fill = false) { const k = 0.5522847498 * radius; return `${(x + radius).toFixed(2)} ${y.toFixed(2)} m ${(x + radius).toFixed(2)} ${(y + k).toFixed(2)} ${(x + k).toFixed(2)} ${(y + radius).toFixed(2)} ${x.toFixed(2)} ${(y + radius).toFixed(2)} c ${(x - k).toFixed(2)} ${(y + radius).toFixed(2)} ${(x - radius).toFixed(2)} ${(y + k).toFixed(2)} ${(x - radius).toFixed(2)} ${y.toFixed(2)} c ${(x - radius).toFixed(2)} ${(y - k).toFixed(2)} ${(x - k).toFixed(2)} ${(y - radius).toFixed(2)} ${x.toFixed(2)} ${(y - radius).toFixed(2)} c ${(x + k).toFixed(2)} ${(y - radius).toFixed(2)} ${(x + radius).toFixed(2)} ${(y - k).toFixed(2)} ${(x + radius).toFixed(2)} ${y.toFixed(2)} c ${fill ? 'f' : 'S'}`; }
-  function qrCommands(payload, x, y, size) {
-    if (!window.qrcode) return []; const qr = qrcode(0, 'M'); qr.addData(payload, 'Byte'); qr.make(); const count = qr.getModuleCount(); const quiet = 4; const cell = size / (count + quiet * 2); const commands = ['0 0 0 rg'];
-    for (let row = 0; row < count; row++) for (let column = 0; column < count; column++) if (qr.isDark(row, column)) commands.push(pdfRect(x + (column + quiet) * cell, y + (count - row - 1 + quiet) * cell, cell + 0.08, cell + 0.08, true)); return commands;
-  }
-  function markerCommands(x, y) { const commands = []; for (const [radius, black] of [[4, true], [2.45, false], [1.35, true], [0.55, false], [0.28, true]]) { commands.push(black ? '0 0 0 rg' : '1 1 1 rg', pdfCircle(x * MM, y * MM, radius * MM, true)); } return commands; }
-  function buildPdf(pages) {
-    const objects = []; const put = (body) => { objects.push(body); return objects.length; };
-    const catalog = put('<< /Type /Catalog /Pages 2 0 R >>'); const pagesId = put(''); const cjk = put('<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [4 0 R] >>'); put('<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> >>'); const latin = put('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'); const pageIds = [];
-    for (const commands of pages) { const stream = commands.join('\n'); const content = put(`<< /Length ${new TextEncoder().encode(stream).length} >>\nstream\n${stream}\nendstream`); pageIds.push(put(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 ${cjk} 0 R /F2 ${latin} 0 R >> >> /Contents ${content} 0 R >>`)); }
-    objects[pagesId - 1] = `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] >>`;
-    let output = '%PDF-1.4\n%WT01\n'; const offsets = [0]; objects.forEach((body, index) => { offsets.push(new TextEncoder().encode(output).length); output += `${index + 1} 0 obj\n${body}\nendobj\n`; }); const xref = new TextEncoder().encode(output).length; output += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF`; return new Blob([new TextEncoder().encode(output)], { type: 'application/pdf' });
-  }
-  function header(commands, title, plan, page) { commands.push('0.08 0.16 0.27 rg', pdfText(title, 18 * MM, 282 * MM, 18), '0.55 0.65 0.70 RG 0.6 w', pdfLine(18 * MM, 278 * MM, 192 * MM, 278 * MM), pdfText(`${plan.name} · ${plan.start_week} · 第 ${page} 页`, 18 * MM, 271 * MM, 8)); }
   function cardPayload(plan, paper, cardPage) { const unsigned = `WT1|${plan.id}|${plan.week.id}|${paper.id}|${paper.version}|${cardPage}`; return `${unsigned}|${hash(unsigned)}`; }
   let pdfFontBytesPromise;
   let pdfFallbackFontPromise;
@@ -222,7 +212,6 @@
     }
     return pdfFallbackFontPromise;
   }
-  const trimPdfText = (value, limit) => [...String(value || '')].slice(0, limit).join('');
   function pdfColor(hex) {
     const value = Number.parseInt(hex.replace('#', ''), 16);
     return window.PDFLib.rgb(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
@@ -244,9 +233,23 @@
     page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness, color: pdfColor(color) });
   }
   function drawPdfHeader(page, font, title, plan, pageNumber) {
-    drawPdfText(page, font, title, 18 * MM, 282 * MM, 18);
-    drawPdfLine(page, 18 * MM, 278 * MM, 192 * MM, 278 * MM, 0.6, '#8ca6b3');
-    drawPdfText(page, font, `${plan.name} · ${plan.start_week} · 第 ${pageNumber} 页`, 18 * MM, 271 * MM, 8);
+    drawPdfText(page, font, title, 16 * MM, 282 * MM, 15, '#263c30');
+    drawFittedPdfText(page, font, `${plan.name} · 第 ${plan.week.number || 1} 周 · ${plan.start_week}`, 16 * MM, 273 * MM, 178 * MM, 8, 7.5);
+    drawPdfLine(page, 16 * MM, 269 * MM, 194 * MM, 269 * MM, 0.5, '#aebcb2');
+  }
+  function wrappedPdfLines(font, value, width, size, maxLines = 2) {
+    const lines = []; let line = '';
+    for (const character of String(value || '')) {
+      if (line && font.widthOfTextAtSize(line + character, size) > width) { lines.push(line); line = character; }
+      else line += character;
+    }
+    if (line) lines.push(line);
+    if (lines.length > maxLines) {
+      let last = lines[maxLines - 1];
+      while (last && font.widthOfTextAtSize(last + '…', size) > width) last = last.slice(0, -1);
+      return [...lines.slice(0, maxLines - 1), last + '…'];
+    }
+    return lines;
   }
   function drawPdfMarker(page, x, y) {
     for (const [radius, color] of [[4, '#000000'], [2.45, '#ffffff'], [1.35, '#000000'], [0.55, '#ffffff'], [0.28, '#000000']]) {
@@ -269,35 +272,35 @@
     const leftCount = Math.min(ITEMS_PER_COLUMN, Math.ceil(segment.length / 2));
     const columnCounts = [leftCount, segment.length - leftCount];
     drawPdfHeader(page, fonts.cjk, title, plan, pageNumber);
-    if (kind === 'exam') drawPdfText(page, fonts.cjk, '姓名：__________________  日期：__________________  看英文填写常用中文义。', 18 * MM, 259 * MM, 8);
-    const yHead = kind === 'exam' ? 249 : 255;
+    const yHead = 258;
     const columnXs = [16, 108];
-    drawPdfLine(page, 105 * MM, 26 * MM, 105 * MM, (yHead + 2) * MM, 0.55, '#d1d9dc');
     columnXs.forEach((x, column) => {
       const count = columnCounts[column];
       if (!count) return;
-      const first = start + (column === 0 ? 0 : leftCount) + 1;
-      const last = first + count - 1;
-      drawPdfText(page, fonts.cjk, `${first}-${last}  ${kind === 'exam' ? '单词 / 中文释义（手写）' : '单词 / 常用释义'}`, x * MM, yHead * MM, 7.5);
-      drawPdfLine(page, x * MM, (yHead - 2) * MM, (x + 86) * MM, (yHead - 2) * MM, 0.6, '#8ca6b3');
+      drawPdfText(page, fonts.cjk, '英文', (x + 7) * MM, yHead * MM, 8, '#64746a');
+      drawPdfText(page, fonts.cjk, kind === 'exam' ? '中文释义（手写）' : '常用释义', (x + 44) * MM, yHead * MM, 8, '#64746a');
+      drawPdfLine(page, x * MM, (yHead - 2) * MM, (x + 86) * MM, (yHead - 2) * MM, 0.5, '#aebcb2');
     });
     segment.forEach((word, index) => {
       const column = index < leftCount ? 0 : 1;
       const row = column === 0 ? index : index - leftCount;
       const x = columnXs[column];
-      const top = yHead - 3 - row * 7.4;
+      const top = yHead - 5 - row * 7.4;
       const no = start + index + 1;
       drawPdfLine(page, x * MM, (top - 6.5) * MM, (x + 86) * MM, (top - 6.5) * MM);
-      drawPdfText(page, fonts.latin, String(no).padStart(2, '0'), x * MM, (top - 2.3) * MM, 7.5);
-      drawFittedPdfText(page, fonts.latin, word.word, (x + 9) * MM, (top - 2.3) * MM, (kind === 'exam' ? 40 : 35) * MM, 8.5, 6.5);
+      drawPdfText(page, fonts.latin, String(no).padStart(2, '0'), x * MM, (top - 2.8) * MM, 7, '#64746a');
+      const wordLines = wrappedPdfLines(fonts.latin, word.word, 34 * MM, 8.5);
+      wordLines.forEach((line, index) => drawPdfText(page, fonts.latin, line, (x + 7) * MM, (top - (wordLines.length === 1 ? 2.8 : 1.2) - index * 3.2) * MM, 8.5, '#20352c'));
       if (kind === 'exam') {
-        drawFittedPdfText(page, fonts.cjk, '□ 熟  □ 疑  □ 复', (x + 53) * MM, (top - 2.3) * MM, 31 * MM, 6.3, 5.8);
-        drawPdfLine(page, (x + 9) * MM, (top - 5.3) * MM, (x + 84) * MM, (top - 5.3) * MM, 0.4, '#8ca6b3');
+        drawPdfLine(page, (x + 44) * MM, (top - 4) * MM, (x + 85) * MM, (top - 4) * MM, 0.4, '#aebcb2');
       } else {
-        drawFittedPdfText(page, fonts.cjk, word.meaning || '尚未补全释义', (x + 46) * MM, (top - 2.3) * MM, 38 * MM, 7.2, 6);
+        const meaningLines = wrappedPdfLines(fonts.cjk, word.meaning || '词典暂未收录', 42 * MM, 7.8);
+        meaningLines.forEach((line, index) => drawPdfText(page, fonts.cjk, line, (x + 44) * MM, (top - (meaningLines.length === 1 ? 2.8 : 1.2) - index * 3.2) * MM, 7.8, '#354b3e'));
       }
     });
-    drawPdfText(page, fonts.cjk, `词轨 Wordtrail · 本页 ${segment.length} 词 · 双栏每页最多 60 词`, 18 * MM, 12 * MM, 8);
+    const pageTotal = Math.max(1, Math.ceil(list.length / ITEMS_PER_PAGE));
+    drawPdfText(page, fonts.cjk, `${segment.length} 词`, 16 * MM, 14 * MM, 7.5, '#64746a');
+    drawPdfText(page, fonts.latin, `${pageNumber} / ${pageTotal}`, 184 * MM, 14 * MM, 7.5, '#64746a');
   }
   function drawAnswerCardPage(pdfDocument, fonts, plan, paper, start, sheetPageCount) {
     const page = pdfDocument.addPage(window.PDFLib.PageSizes.A4);
@@ -305,7 +308,7 @@
     const cardPageCount = Math.max(1, Math.ceil(paper.items.length / CARDS_PER_PAGE));
     const segment = paper.items.slice(start, start + CARDS_PER_PAGE);
     drawPdfHeader(page, fonts.cjk, `${paper.label} · 错题勾选卡`, plan, sheetPageCount + cardPage);
-    drawPdfText(page, fonts.cjk, `第 ${cardPage} / ${cardPageCount} 张：答错时涂满左侧圆圈；右侧圆圈留空。`, 18 * MM, 268 * MM, 8);
+    drawPdfText(page, fonts.cjk, `第 ${cardPage} / ${cardPageCount} 张。错题涂满左圈，右圈留空。拍摄时保留四角定位点与二维码。`, 18 * MM, 262 * MM, 7.5);
     [[10, 10], [200, 10], [10, 287], [200, 287]].forEach(([x, y]) => drawPdfMarker(page, x, y));
     segment.forEach((item, index) => {
       const row = Math.floor(index / 10); const column = index % 10;
@@ -316,9 +319,9 @@
       drawPdfText(page, fonts.latin, String(item.no).padStart(3, '0'), (x + 8.2) * MM, (y + 2.35) * MM, 6.2);
     });
     const payload = cardPayload(plan, paper, cardPage);
-    drawPdfQr(page, payload, 18 * MM, 22 * MM, 18 * MM);
-    drawPdfText(page, fonts.cjk, '页面核验码：自动确认考试、周期与答题卡页码', 39 * MM, 28 * MM, 7.5);
-    drawPdfText(page, fonts.latin, `WT-OMR-STATIC · ${cardPage}/${cardPageCount}`, 39 * MM, 18 * MM, 8);
+    drawPdfQr(page, payload, 18 * MM, 18 * MM, 24 * MM);
+    drawPdfText(page, fonts.cjk, '上传照片后核对错题，再保存结果。', 46 * MM, 28 * MM, 7.5);
+    drawPdfText(page, fonts.cjk, '二维码用于匹配本次测试。', 46 * MM, 22 * MM, 7.5);
   }
   async function createPdf(plan, kind, source) {
     if (!window.PDFLib || !window.fontkit) throw new Error('PDF 组件未加载，请刷新页面后重试');
@@ -338,7 +341,7 @@
     const displayTitle = kind === 'study' ? '背诵表' : kind === 'answer' ? `${paper.label} · 答案表` : paper.label;
     pdfDocument.setTitle(`${plan.name} · ${displayTitle}`);
     pdfDocument.setAuthor('词轨 Wordtrail');
-    pdfDocument.setCreator('词轨 Wordtrail 0.10');
+    pdfDocument.setCreator('学习工作台 0.15 · Wordtrail');
     pdfDocument.setProducer('pdf-lib with embedded Noto fonts');
     for (let start = 0; start < Math.max(1, list.length); start += ITEMS_PER_PAGE) drawWordSheetPage(pdfDocument, fonts, plan, kind, paper, list, start);
     if (kind === 'exam') {
@@ -350,8 +353,8 @@
   }
   function contentHash(value) { return hash(JSON.stringify(value)); }
   async function makeDocument(state, plan, kind, version) {
-    const paper = kind === 'study' ? null : paperForVersion(state, plan, version); const words = paper ? paper.items : planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length)); const snapshot = { kind, plan: plan.id, week: plan.week.id, version, words, template: 'static-pdf-omr-v5-clear-filenames' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
-    const peers = state.documents.filter((document) => document.plan_id === plan.id && document.type === kind && document.exam_version === version); const label = kind === 'study' ? '背诵表' : kind === 'answer' ? `${version === 1 ? '周测' : '复测'}答案表` : `${version === 1 ? '周测' : '复测'}考试表`; const revision = peers.length + 1; const record = { id: newId('doc'), type: kind, label, plan_id: plan.id, week_id: plan.week.id, exam_version: version, revision, file_name: `Wordtrail_${safeName(plan.name)}_${plan.start_week}_第${plan.week.number || 1}周期_${label}_第${revision}版.pdf`, content_hash: digest, status: 'ready', created_at: now(), snapshot };
+    const paper = kind === 'study' ? null : paperForVersion(state, plan, version); const words = paper ? paper.items : planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length)); const snapshot = { kind, plan: plan.id, planName: plan.name, startWeek: plan.start_week, week: plan.week.id, version, words, template: 'static-pdf-v6-simple-sheets' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
+    const peers = state.documents.filter((document) => document.plan_id === plan.id && document.week_id === plan.week.id && document.type === kind && document.exam_version === version); const label = kind === 'study' ? '背诵表' : kind === 'answer' ? `${version === 1 ? '周测' : '复测'}答案` : `${version === 1 ? '周测' : '复测'}试卷`; const revision = peers.length + 1; const record = { id: newId('doc'), type: kind, label, plan_id: plan.id, week_id: plan.week.id, exam_version: version, revision, file_name: `${safeName(plan.name)}_第${plan.week.number || 1}周_${label}_v${revision}.pdf`, content_hash: digest, status: 'ready', created_at: now(), snapshot };
     await saveDocumentBlob(record.id, await createPdf(plan, kind, paper || words)); state.documents.unshift(record); return record;
   }
 
@@ -366,17 +369,49 @@
     if (method === 'GET' && path === '/api/state') return publicState(state);
     if (method === 'GET' && path === '/api/dictionary/lookup') { const word = url.searchParams.get('word') || ''; const hit = (await dictionaryFor([word])).get(normal(word)); return { word, dictionary_version: DICTIONARY_VERSION, match_status: hit ? 'matched' : 'unresolved', lemma: hit?.lemma || '', phonetic: hit?.phonetic || '', part_of_speech: hit?.part_of_speech || '', display_meanings: hit?.meaning || '' }; }
     if (method === 'POST' && path === '/api/import/preview') { const [words, summary] = await preparedImport(body.filename || '', body.content || ''); return { preview: words.map(({ id, source_row, ...word }) => ({ ...word, source: source_row })), summary, dictionary_version: DICTIONARY_VERSION }; }
+    if (method === 'POST' && path === '/api/setup') {
+      weeklyTarget(body.weekly_target);
+      const [words] = await preparedImport(body.filename || '', body.content || '');
+      const book = { id: newId('wb'), name: String(body.name || '').trim() || String(body.filename || '').replace(/\.[^.]+$/, '') || '未命名词表', created_at: now(), words: body.shuffle ? shuffled(words) : words, dictionary_version: DICTIONARY_VERSION };
+      state.wordbooks.push(book); const plan = createPlan(state, book, body);
+      await saveState(state); return { plan, wordbook: { id: book.id, name: book.name, word_count: book.words.length } };
+    }
     if (method === 'POST' && (path === '/api/import/confirm' || path === '/api/import')) { const [words, summary] = await preparedImport(body.filename || '', body.content || '', body.selected_words); const book = { id: newId('wb'), name: String(body.name || '').trim() || String(body.filename || '').replace(/\.[^.]+$/, '') || '未命名词表', created_at: now(), words: body.shuffle ? shuffled(words) : words, dictionary_version: DICTIONARY_VERSION }; state.wordbooks.push(book); await saveState(state); return { wordbook: { id: book.id, name: book.name, word_count: book.words.length, ...summary } }; }
     const bookEdit = path.match(/^\/api\/wordbooks\/([^/]+)$/); if (method === 'POST' && bookEdit) { const book = bookFor(state, bookEdit[1]); if (String(body.name || '').trim()) book.name = String(body.name).trim(); const additions = String(body.add_words || '').split(/\r?\n/).map(extractWord).filter(Boolean); const dictionary = await dictionaryFor(additions); const known = new Set(book.words.map((word) => word.normalized_word)); for (const word of additions) if (!known.has(normal(word))) { const hit = dictionary.get(normal(word)); book.words.push({ id: newId('w'), word, meaning: hit?.meaning || '', phonetic: hit?.phonetic || '', part_of_speech: hit?.part_of_speech || '', example: '', note: '', source_row: '手动添加', normalized_word: normal(word), dictionary_lemma: hit?.lemma || '', dictionary_senses: hit ? [hit.meaning] : [], meaning_source: hit ? 'dictionary' : 'unresolved', dictionary_version: hit ? DICTIONARY_VERSION : '', match_status: hit ? 'matched' : 'unresolved' }); known.add(normal(word)); } await saveState(state); return { wordbook: book }; }
     const removeWords = path.match(/^\/api\/wordbooks\/([^/]+)\/delete-words$/); if (method === 'POST' && removeWords) { const book = bookFor(state, removeWords[1]); const removal = new Set(body.word_ids || []); const used = new Set(state.plans.filter((plan) => plan.wordbook_id === book.id).flatMap((plan) => (plan.cycles || []).flatMap((cycle) => cycle.word_ids || []))); if ([...removal].some((id) => used.has(id))) throw new Error('选中的词正在学习计划中使用；请先删除关联计划后再移除。'); const remaining = book.words.filter((word) => !removal.has(word.id)); if (!remaining.length) throw new Error('词表至少需保留 1 个词'); book.words = remaining; await saveState(state); return { ok: true }; }
     const deleteBook = path.match(/^\/api\/wordbooks\/([^/]+)\/delete$/); if (method === 'POST' && deleteBook) { const id = deleteBook[1]; if (state.plans.some((plan) => plan.wordbook_id === id)) throw new Error('此词表仍关联学习计划；请先删除计划。'); bookFor(state, id); state.wordbooks = state.wordbooks.filter((book) => book.id !== id); await saveState(state); return { ok: true }; }
-    if (method === 'POST' && path === '/api/plans') { const book = bookFor(state, body.wordbook_id); const target = Number(body.weekly_target || 0); if (target < 1) throw new Error('请填写每周期至少学习 1 个词'); const plan = { id: newId('plan'), name: String(body.name || '').trim() || '未命名计划', wordbook_id: book.id, start_week: body.start_week || new Date().toISOString().slice(0, 10), weekly_target: target, estimated_cycles: estimateCycles(book.words.length, target), status: 'active', cycles: [], created_at: now() }; state.plans.push(plan); state.active_plan_id = plan.id; buildCycle(state, plan); await saveState(state); return { plan }; }
-    const planEdit = path.match(/^\/api\/plans\/([^/]+)$/); if (method === 'POST' && planEdit) { const plan = planFor(state, planEdit[1]); if (String(body.name || '').trim()) plan.name = String(body.name).trim(); if (body.start_week) plan.start_week = body.start_week; if (body.weekly_target !== undefined) { const target = Number(body.weekly_target); if (target < 1) throw new Error('每周期数量至少为 1'); plan.weekly_target = target; plan.estimated_cycles = estimateCycles(bookFor(state, plan.wordbook_id).words.length, target); } await saveState(state); return { plan }; }
+    if (method === 'POST' && path === '/api/plans') { const plan = createPlan(state, bookFor(state, body.wordbook_id), body); await saveState(state); return { plan }; }
+    const planEdit = path.match(/^\/api\/plans\/([^/]+)$/); if (method === 'POST' && planEdit) { const plan = planFor(state, planEdit[1]); if (String(body.name || '').trim()) plan.name = String(body.name).trim(); if (body.start_week) plan.start_week = body.start_week; if (body.weekly_target !== undefined) { const target = weeklyTarget(body.weekly_target); plan.weekly_target = target; plan.estimated_cycles = estimateCycles(bookFor(state, plan.wordbook_id).words.length, target); if (!plan.week.papers.length && !plan.week.frozen_word_ids?.length && plan.status !== 'completed') { plan.cycles.pop(); buildCycle(state, plan); } } await saveState(state); return { plan }; }
     const deletePlan = path.match(/^\/api\/plans\/([^/]+)\/delete$/); if (method === 'POST' && deletePlan) { const id = deletePlan[1]; planFor(state, id); state.plans = state.plans.filter((plan) => plan.id !== id); if (state.active_plan_id === id) state.active_plan_id = state.plans[0]?.id || null; await saveState(state); return { ok: true }; }
     if (method === 'POST' && path === '/api/active-plan') { planFor(state, body.plan_id); state.active_plan_id = body.plan_id; await saveState(state); return { ok: true }; }
     const planWordUpdate = path.match(/^\/api\/plans\/([^/]+)\/words$/); if (method === 'POST' && planWordUpdate) { const plan = planFor(state, planWordUpdate[1]); if (plan.week.frozen_word_ids?.length) throw new Error('周测已经生成，本周期词条已冻结'); const book = bookFor(state, plan.wordbook_id); const ids = (body.word_ids || []).filter((id) => find(book.words, id)); if (!ids.length) throw new Error('请至少保留 1 个本周期词条'); plan.week.word_ids = ids; await saveState(state); return { week: plan.week }; }
-    const online = path.match(/^\/api\/exams\/(\d+)\/online$/); if (method === 'GET' && online) { const plan = planFor(state, url.searchParams.get('plan_id')); const paper = paperForVersion(state, plan, Number(online[1])); const index = Number(url.searchParams.get('index') || 0); const item = paper.items[index]; if (!item) throw new Error('题号超出范围'); let meanings = [...new Set(state.wordbooks.flatMap((book) => book.words.filter((word) => word.id !== item.word.id && word.meaning).map((word) => word.meaning)))]; if (meanings.length < 2) { const shard = await loadDictionaryShard(normal(item.word.word)[0]); meanings.push(...Object.values(shard).slice(0, 80).map((record) => record[1]).filter((meaning) => meaning && meaning !== item.word.meaning)); } const answer = item.word.meaning || '尚未补全释义'; const choices = shuffled([...new Set([answer, ...meanings])]).slice(0, 3); if (!choices.includes(answer)) choices[0] = answer; while (choices.length < 3) choices.push(answer); await saveState(state); return { paper: { version: paper.version, label: paper.label }, question: { no: item.no, word: item.word.word, choices: shuffled(choices), answer, meaning: item.word.meaning || '', phonetic: item.word.phonetic || '', part_of_speech: item.word.part_of_speech || '', examples: [`I reviewed “${item.word.word}” in today's lesson.`, `The common sense of “${item.word.word}” is: ${(item.word.meaning || 'its common meaning').split('；')[0]}.`, `Please recall “${item.word.word}” before moving on.`] }, index, total: paper.items.length }; }
-    const result = path.match(/^\/api\/exams\/(\d+)\/result$/); if (method === 'POST' && result) { const plan = planFor(state, body.plan_id); const paper = plan.week.papers.find((item) => item.version === Number(result[1])); if (!paper) throw new Error('请先生成考试表'); const allowed = new Set(paper.items.map((item) => item.no)); paper.wrong_numbers = [...new Set((body.wrong_numbers || []).map(Number).filter((number) => allowed.has(number)))].sort((a, b) => a - b); paper.result_at = now(); let grade = ''; if (paper.version === 2) { grade = gradeCycle(plan.week); plan.week.grade = grade; plan.week.status = 'completed'; if (!buildCycle(state, plan)) plan.status = 'completed'; } await saveState(state); return { paper, grade, next_cycle: grade ? plan.week.number : null }; }
+    const online = path.match(/^\/api\/exams\/(\d+)\/online$/);
+    if (method === 'GET' && online) {
+      const plan = planFor(state, url.searchParams.get('plan_id'));
+      const paper = paperForVersion(state, plan, Number(online[1]));
+      if (paper.result_at) throw new Error('本次测试已经提交，请进入下一阶段');
+      const index = Number(url.searchParams.get('index') || 0), item = paper.items[index];
+      if (!item) throw new Error('题号超出范围');
+      let meanings = [...new Set(state.wordbooks.flatMap(book => book.words.filter(word => word.id !== item.word.id && word.meaning).map(word => word.meaning)))];
+      if (meanings.length < 2) { const shard = await loadDictionaryShard(normal(item.word.word)[0]); meanings.push(...Object.values(shard).slice(0, 80).map(record => record[1]).filter(meaning => meaning && meaning !== item.word.meaning)); }
+      const answer = item.word.meaning || '词典暂未收录';
+      const choices = shuffled([answer, ...shuffled([...new Set(meanings)].filter(meaning => meaning !== answer)).slice(0, 2)]);
+      await saveState(state);
+      return { paper: { version: paper.version, label: paper.label }, question: { no: item.no, word: item.word.word, choices, answer, meaning: item.word.meaning || '', examples: item.word.example ? [item.word.example] : [] }, index, total: paper.items.length };
+    }
+    const result = path.match(/^\/api\/exams\/(\d+)\/result$/);
+    if (method === 'POST' && result) {
+      const plan = planFor(state, body.plan_id), paper = plan.week.papers.find(item => item.version === Number(result[1]));
+      if (!paper) throw new Error('请先开始测试或下载试卷');
+      if (paper.result_at) throw new Error('本次结果已保存，请勿重复提交');
+      if (body.paper_id && body.paper_id !== paper.id) throw new Error('试卷已变化，请刷新后重新提交');
+      const allowed = new Set(paper.items.map(item => item.no));
+      if (!Array.isArray(body.wrong_numbers) || body.wrong_numbers.some(number => !Number.isInteger(number) || !allowed.has(number))) throw new Error('错题号不在当前试卷范围内');
+      paper.wrong_numbers = [...new Set(body.wrong_numbers)].sort((a, b) => a - b); paper.result_at = now();
+      let grade = '';
+      if (paper.version === 2) { grade = gradeCycle(plan.week); plan.week.grade = grade; plan.week.status = 'completed'; if (!buildCycle(state, plan)) plan.status = 'completed'; }
+      await saveState(state); return { paper, grade, next_cycle: grade ? plan.week.number : null };
+    }
     const scan = path.match(/^\/api\/exams\/(\d+)\/scan$/); if (method === 'POST' && scan) { const plan = planFor(state, body.plan_id); const paper = plan.week.papers.find((item) => item.version === Number(scan[1])); if (!paper) throw new Error('请先生成周测或复测'); if (!window.WordtrailOMR) throw new Error('浏览器识别组件未加载'); return window.WordtrailOMR.scan(body.image, { plan_id: plan.id, week_id: plan.week.id, paper_id: paper.id, version: paper.version, item_count: paper.items.length }); }
     if (method === 'POST' && path === '/api/documents/generate') { const plan = planFor(state, body.plan_id); const kind = body.type; let version = body.exam_version ?? body.version; if (!['study', 'exam', 'answer'].includes(kind)) throw new Error('未知文档类型'); if (kind === 'study') version = null; else { version = Number(version || 1); if (![1, 2].includes(version)) throw new Error('每周期仅支持周测和复测'); } const document = await makeDocument(state, plan, kind, version); await saveState(state); const publicData = await publicState(state); return { document: find(publicData.documents, document.id) }; }
     throw new Error('接口不存在');
@@ -394,5 +429,5 @@
     for (const url of objectUrls.values()) URL.revokeObjectURL(url); objectUrls.clear();
   }
   async function requestPersistentStorage() { try { if (navigator.storage?.persist) return navigator.storage.persist(); } catch {} return false; }
-  window.WordtrailService = { request, exportBackup, importBackup, requestPersistentStorage, templateBlob: () => new Blob(['\ufeffword\nresilient\nabandon 放弃\nbenefit,好处\n'], { type: 'text/csv;charset=utf-8' }), __test: { loadState, saveState, createPdf, cardPayload, hash } };
+  window.WordtrailService = { request, exportBackup, importBackup, requestPersistentStorage, __test: { loadState, saveState, createPdf, cardPayload, hash } };
 })();

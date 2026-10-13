@@ -1,0 +1,158 @@
+"""Run against the test server on 4174; uses isolated browser data only."""
+import json
+from pathlib import Path
+from playwright.sync_api import sync_playwright, expect
+from pypdf import PdfReader
+import pypdfium2 as pdfium
+
+OUT = Path(__file__).parent / 'output'
+OUT.mkdir(exist_ok=True)
+
+def check(name, condition=True):
+    assert condition, name
+    print('PASS', name, flush=True)
+
+def state(page):
+    return page.evaluate("WordtrailService.request('/api/state')")
+
+def post(page, path, body):
+    return page.evaluate("([path,body]) => WordtrailService.request(path,{method:'POST',body:JSON.stringify(body)})", [path, body])
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(channel='msedge', headless=True)
+    context = browser.new_context(viewport={'width':1440,'height':1100}, service_workers='block', accept_downloads=True)
+    page = context.new_page()
+    errors, requests = [], []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.on('request', lambda request: requests.append(request.url))
+    page.on('dialog', lambda dialog: dialog.accept())
+    page.goto('http://127.0.0.1:4174/')
+    page.wait_for_load_state('networkidle')
+    page.locator('[data-tool=words]').click()
+    expect(page.locator('#empty')).to_be_visible()
+    check('empty state has no seeded data', not state(page)['wordbooks'])
+    check('heavy components are not loaded initially', not any('/vendor/' in url and url.endswith('.js') for url in requests))
+    page.screenshot(path=str(OUT/'empty.png'), full_page=True)
+    page.locator('#empty [data-action=setup]').click()
+    page.locator('#import-file').set_input_files({'name':'我的词表.txt','mimeType':'text/plain','buffer':'abandon 旧翻译\nability\nable\nabout\nabove\nabsent\nabsorb\nabstract'.encode()})
+    expect(page.locator('#setup-submit')).to_be_enabled(timeout=30000)
+    page.locator('#setup-target').fill('4')
+    expect(page.locator('#setup-estimate')).to_contain_text('3 周')
+    page.locator('#setup-submit').click()
+    expect(page.locator('#setup-dialog')).not_to_be_visible()
+    expect(page.locator('#word-list .word-row')).to_have_count(4)
+    first_id = state(page)['active_plan_id']
+    check('one import creates book and weekly plan', len(state(page)['plans'])==1)
+    page.locator('#meaning-toggle').click()
+    expect(page.locator('.meaning.covered')).to_have_count(4)
+    page.locator('.meaning.covered').first.click()
+    expect(page.locator('.meaning.covered')).to_have_count(3)
+    page.locator('#study-search').fill('notfound')
+    expect(page.locator('.no-results')).to_be_visible()
+    page.locator('#study-search').fill('')
+    check('meaning cover and search work')
+    page.locator('#test-tab').click()
+    page.locator('[data-action=start-quiz]').click()
+    expect(page.locator('.quiz-word')).to_be_visible()
+    page.locator('[data-choice="-1"]').click()
+    page.locator('[data-action=pause-quiz]').click()
+    page.reload(); page.wait_for_load_state('networkidle')
+    expect(page.locator('[data-action=start-quiz]')).to_contain_text('继续答题')
+    page.locator('[data-action=start-quiz]').click()
+    expect(page.locator('.quiz-feedback')).to_contain_text('错词')
+    page.locator('[data-action=next-question]').click()
+    for index in range(1,4):
+        page.locator('[data-choice="-1"]').click()
+        page.locator('[data-action=next-question]').click()
+    expect(page.locator('#test-tab')).to_have_text('复测')
+    check('online weekly test resumes after reload and saves wrong words')
+    page.locator('[data-action=start-quiz]').click()
+    for index in range(4):
+        page.locator('[data-choice="-1"]').click()
+        page.locator('[data-action=next-question]').click()
+    expect(page.locator('#cycle-label')).to_have_text('第 2 周')
+    expect(page.locator('#last-result')).to_contain_text('D')
+    current = state(page)['plans'][0]
+    check('retest advances plan and mixes old words', len(current['week']['previous_word_ids'])==1)
+    page.locator('#header-import').click()
+    common = 'abandon ability able about above absent absorb abstract abuse academic accept access accident account accurate achieve acid acquire across act action active actual adapt add address adjust admit adult advance advice affect afford afraid after'.split()
+    dictionary_words = page.evaluate("async () => Object.keys(await (await fetch('dictionary/a.json')).json()).filter(x=>/^[a-z]{3,15}$/.test(x))")
+    words = list(dict.fromkeys(common + dictionary_words))[:320]
+    page.locator('#import-file').set_input_files({'name':'词汇练习.json','mimeType':'application/json','buffer':json.dumps(words).encode()})
+    expect(page.locator('#setup-submit')).to_be_enabled(timeout=30000)
+    page.locator('#setup-target').fill('300')
+    page.locator('#setup-submit').click()
+    expect(page.locator('#setup-dialog')).not_to_be_visible(timeout=30000)
+    second_id = state(page)['active_plan_id']
+    page.locator('#plan-select').select_option(first_id)
+    expect(page.locator('#word-count')).to_have_text('本周 4 个词')
+    expect(page.locator('#plan-select option')).to_have_count(2)
+    page.locator('#plan-select').select_option(second_id)
+    expect(page.locator('#word-count')).to_have_text('本周 300 个词')
+    check('switching plans preserves select options')
+    page.locator('[data-action=edit-current]').click()
+    page.locator('#edit-plan-name').fill('日常词汇')
+    page.locator('#plan-form button[type=submit]').click()
+    expect(page.locator('#plan-dialog')).not_to_be_visible()
+    check('edit plan keeps name and weekly quantity')
+    for action,name in [('study-pdf','study.pdf'),('exam-pdf','exam.pdf')]:
+        if action=='exam-pdf':
+            page.locator('#test-tab').click()
+            page.locator('#paper-mode summary').click()
+        with page.expect_download(timeout=90000) as info:
+            page.locator(f'[data-action={action}]').click()
+        info.value.save_as(OUT/name)
+        expect(page.locator('#history-count')).to_have_text('1 份' if action=='study-pdf' else '2 份')
+        check(f'{name} browser download and history')
+    study, exam = PdfReader(OUT/'study.pdf'), PdfReader(OUT/'exam.pdf')
+    exam_plan = next(item for item in state(page)['plans'] if item['id']==second_id)
+    exam_paper = exam_plan['week']['papers'][0]
+    (OUT/'card-context.json').write_text(json.dumps({'plan_id':second_id,'week_id':exam_plan['week']['id'],'paper_id':exam_paper['id'],'version':1,'item_count':300}),encoding='utf-8')
+    rendered = pdfium.PdfDocument(str(OUT/'exam.pdf'))
+    rendered[len(rendered)-1].render(scale=203/72).to_pil().save(OUT/'card-page.png')
+    check('60 words per page, 300 card per page', len(study.pages)==5 and len(exam.pages)==6)
+    check('embedded Chinese PDF text', '常用释义' in study.pages[0].extract_text() and '300' in exam.pages[-1].extract_text())
+    page.locator('#error-batch').fill('1, 2-4,999')
+    page.locator('[data-action=add-errors]').click()
+    expect(page.locator('#error-count')).to_have_text('已选 0 / 300 个错词')
+    expect(page.locator('#result-error')).to_be_visible()
+    page.locator('#error-batch').fill('1, 2-4, 299-300')
+    page.locator('[data-action=add-errors]').click()
+    expect(page.locator('#error-count')).to_have_text('已选 6 / 300 个错词')
+    page.reload(); page.wait_for_load_state('networkidle')
+    page.locator('#paper-mode summary').click()
+    expect(page.locator('#error-count')).to_have_text('已选 6 / 300 个错词')
+    page.locator('#result-form button[type=submit]').click()
+    expect(page.locator('#test-tab')).to_have_text('复测')
+    check('batch ranges validate atomically and persist through reload')
+    response=page.evaluate("WordtrailService.request('/api/exams/2/online?plan_id='+document.querySelector('#plan-select').value+'&index=0')")
+    check('retest includes all wrong plus 20 percent correct', response['total']==65)
+    page.locator('#study-tab').click()
+    if page.locator('#meaning-toggle').inner_text()=='显示释义':
+        page.locator('#meaning-toggle').click()
+    page.locator('#toast').wait_for(state='hidden',timeout=10000)
+    page.screenshot(path=str(OUT/'desktop.png'), full_page=True)
+    for width,height,name in [(375,812,'mobile'),(812,375,'landscape'),(1440,1100,'desktop')]:
+        page.set_viewport_size({'width':width,'height':height})
+        check(f'no horizontal overflow at {width}px', page.evaluate('document.documentElement.scrollWidth<=innerWidth'))
+        page.screenshot(path=str(OUT/f'{name}.png'), full_page=True)
+    page.locator('[data-action=edit-current]').click()
+    page.locator('[data-action=delete-plan]').click()
+    expect(page.locator('#plan-select option')).to_have_count(1)
+    page.locator('[data-action=edit-current]').click()
+    page.locator('[data-action=delete-plan]').click()
+    expect(page.locator('#empty')).to_be_visible()
+    expect(page.locator('#history')).to_be_visible()
+    check('download history survives removal of all plans')
+    check('no uncaught browser errors', not errors)
+    service = context.new_page()
+    service.goto('http://127.0.0.1:4174/tests/harness.html')
+    service.wait_for_function("document.querySelector('#summary').textContent !== 'RUNNING'", timeout=120000)
+    print(service.locator('#results').inner_text(), flush=True)
+    check('service regression harness', service.locator('#summary').inner_text()=='ALL PASSED')
+    omr = context.new_page()
+    omr.goto('http://127.0.0.1:4174/tests/omr-harness.html')
+    omr.wait_for_function("document.querySelector('#result').textContent !== 'RUNNING'", timeout=120000)
+    print(omr.locator('#result').inner_text(), flush=True)
+    check('OMR card geometry and wrong-page rejection', omr.locator('#result').inner_text().startswith('PASS'))
+    browser.close()

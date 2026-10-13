@@ -2,6 +2,9 @@
 
 词轨静态版包含以下第三方开源资源：
 
+- [KaTeX](https://katex.org/)，用于错题公式显示，MIT License；许可证随 `vendor/katex/LICENSE` 提供，随包分发字体。
+- [html2canvas](https://html2canvas.hertzen.com/)，用于将错题文字、公式和附图排版为 PDF 页面，MIT License；许可证随 `vendor/LICENSE-HTML2CANVAS.txt` 提供。
+
 - [ECDICT](https://github.com/skywind3000/ECDICT)，英汉词典数据，MIT License。静态版对原始 CSV 做了按首字母分片和常用释义压缩。
 - [SheetJS Community Edition](https://github.com/SheetJS/sheetjs)，用于浏览器内读取 XLS/XLSX，Apache License 2.0。
 - [OpenCV.js](https://docs.opencv.org/4.x/d5/d10/tutorial_js_root.html)，用于纸张透视矫正和图像处理，Apache License 2.0。

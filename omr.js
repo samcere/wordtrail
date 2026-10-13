@@ -238,6 +238,7 @@
   }
 
   async function scan(imageDataUrl, expected) {
+    if (!window.jsQR) await loadScript(new URL('vendor/jsQR.js', ASSET_ROOT).href);
     const [cv, image] = await Promise.all([openCv(), imageFromDataUrl(imageDataUrl)]);
     const corrected = rectify(cv, sourceCanvas(image));
     const { canvas, metadata } = matchingPage(corrected);
