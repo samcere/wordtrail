@@ -16,7 +16,7 @@
   const emptyState = () => ({ wordbooks: [], plans: [], documents: [], active_plan_id: null });
   const now = () => new Date().toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-');
   const newId = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
-  const normal = (value) => String(value || '').trim().replaceAll('’', "'").toLowerCase();
+  const normal = (value) => String(value || '').normalize('NFKC').trim().replace(/[’‘]/g, "'").replace(/\s+/g, ' ').toLowerCase();
   const safeName = (value) => String(value || '').replace(/[\\/:*?"<>|]+/g, '_').trim().slice(0, 48) || '词轨文档';
   const shuffled = (items) => { const copy = [...items]; for (let i = copy.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [copy[i], copy[j]] = [copy[j], copy[i]]; } return copy; };
   const find = (items, id) => items.find((item) => item.id === id);
@@ -96,8 +96,9 @@
     const newCount = Math.min(unseen.length, Math.max(1, target - reviewCount));
     const wrongFirst = [...cycles].reverse().flatMap((cycle) => cycle.wrong_word_ids || []);
     const reviewPool = [...new Set([...wrongFirst, ...[...history].reverse()])];
-    const review = shuffled(reviewPool).slice(0, reviewCount);
-    const cycle = { id: newId('week'), number, word_ids: shuffled([...unseen.slice(0, newCount), ...review]), new_word_ids: unseen.slice(0, newCount), previous_word_ids: review, frozen_word_ids: [], papers: [], status: 'active', created_at: now() };
+    const review = reviewPool.slice(0, reviewCount);
+    const selected = new Set([...unseen.slice(0, newCount), ...review]);
+    const cycle = { id: newId('week'), number, word_ids: book.words.filter(word => selected.has(word.id)).map(word => word.id), new_word_ids: unseen.slice(0, newCount), previous_word_ids: review, frozen_word_ids: [], papers: [], status: 'active', created_at: now() };
     cycles.push(cycle); plan.week = cycle; return cycle;
   }
   function gradeCycle(cycle) {
@@ -127,24 +128,35 @@
   }
 
   async function loadDictionaryShard(letter) {
-    if (!/^[a-z]$/.test(letter)) return {};
+    if (!/^[a-z](?:-phrases)?$/.test(letter)) return {};
     if (!dictionaryCache.has(letter)) {
       const asset = new URL(`dictionary/${letter}.json`, ASSET_ROOT);
-      dictionaryCache.set(letter, fetch(asset).then((response) => { if (!response.ok) throw new Error(`词典分片 ${letter.toUpperCase()} 加载失败（HTTP ${response.status} · ${asset.pathname}）`); return response.json(); }));
+      dictionaryCache.set(letter, fetch(asset).then((response) => { if (!response.ok) throw new Error(`词典分片 ${letter.toUpperCase()} 加载失败（HTTP ${response.status} · ${asset.pathname}）`); return response.json(); }).catch(error => { dictionaryCache.delete(letter); throw error; }));
     }
     return dictionaryCache.get(letter);
   }
   async function dictionaryFor(words) {
     const letters = [...new Set(words.map((word) => normal(word)[0]).filter((letter) => /^[a-z]$/.test(letter)))];
     const shards = new Map(await Promise.all(letters.map(async (letter) => [letter, await loadDictionaryShard(letter)])));
+    const phraseLetters = [...new Set(words.filter(word => normal(word).includes(' ')).map(word => normal(word)[0]).filter(letter => /^[a-z]$/.test(letter)))];
+    const phrases = new Map(await Promise.all(phraseLetters.map(async letter => [letter, await loadDictionaryShard(`${letter}-phrases`)])));
     const results = new Map();
-    for (const word of words) { const key = normal(word); const record = shards.get(key[0])?.[key]; if (record) results.set(key, { lemma: record[0], meaning: record[1], phonetic: record[2], part_of_speech: record[3], definition: record[4] }); }
+    for (const word of words) { const key = normal(word); const record = phrases.get(key[0])?.[key] || shards.get(key[0])?.[key]; if (record) results.set(key, { lemma: record[0], meaning: record[1], phonetic: record[2], part_of_speech: record[3], definition: record[4] }); }
     return results;
   }
 
-  const aliases = { '单词': 'word', '英文': 'word', '英语': 'word', '词汇': 'word', word: 'word', english: 'word', term: 'word', words: 'words', data: 'data', items: 'items', vocabulary: 'vocabulary', list: 'list', '释义': 'meaning', '中文': 'meaning', '翻译': 'meaning', definition: 'meaning', translation: 'meaning', meaning: 'meaning' };
+  const aliases = { '单词': 'word', '英文': 'word', '英语': 'word', '词汇': 'word', '词组': 'word', '短语': 'word', '英文词组': 'word', '英文短语': 'word', word: 'word', english: 'word', term: 'word', phrase: 'word', expression: 'word', words: 'words', phrases: 'words', data: 'data', items: 'items', vocabulary: 'vocabulary', list: 'list', '释义': 'meaning', '中文': 'meaning', '翻译': 'meaning', definition: 'meaning', translation: 'meaning', meaning: 'meaning' };
   function canonical(value) { const key = String(value || '').trim().toLowerCase().replace(/[\s_-]+/g, ''); return aliases[key] || key; }
-  function extractWord(value) { const match = String(value || '').replace(/\u200b/g, '').trim().replace(/^["'“”‘’（）()\[\]]+|["'“”‘’（）()\[\]]+$/g, '').match(/(?<![a-z0-9])([a-z]+(?:[-'][a-z]+)*)(?![a-z0-9])/i); return match?.[1] || null; }
+  function extractWord(value) {
+    if (typeof value !== 'string') return null;
+    const text = value.normalize('NFKC').replace(/[\u200b\uFEFF]/g, '').replace(/[’‘]/g, "'").trim()
+      .replace(/^\d+\s*[.)、:\-]?\s*/, '').replace(/^["'“”\[(]+/, '')
+      .replace(/\s+(?:n|v|vi|vt|adj|adv|prep|conj|pron|art|aux)\..*$/i, '');
+    // Only the leading English field is an entry. Stop at translations, IPA or separators.
+    // Whitespace inside it belongs to the phrase, never just take its first word.
+    const match = text.match(/^[a-z]+(?:[-'][a-z]+)*(?:[ \t]+[a-z]+(?:[-'][a-z]+)*)*/i);
+    return match ? match[0].replace(/\s+/g, ' ').trim() : null;
+  }
   function candidate(value, source) { const word = extractWord(value); return word ? { word, normalized: normal(word), source } : null; }
   function rowsToCandidates(rows, source) {
     if (!rows.length) return []; const headers = rows[0].map(canonical); const columns = headers.map((value, index) => value === 'word' ? index : -1).filter((index) => index >= 0); const start = columns.length ? 1 : 0; const result = [];
@@ -152,11 +164,16 @@
   }
   function jsonCandidates(value, path = '$') {
     if (typeof value === 'string') return [candidate(value, path)].filter(Boolean);
-    if (Array.isArray(value)) return value.flatMap((entry, index) => jsonCandidates(entry, `${path}[${index}]`));
+    if (Array.isArray(value)) return value.length && value.every(Array.isArray) ? rowsToCandidates(value, path) : value.flatMap((entry, index) => jsonCandidates(entry, `${path}[${index}]`));
     if (!value || typeof value !== 'object') return [];
     const wordKey = Object.keys(value).find((key) => canonical(key) === 'word'); if (wordKey) return [candidate(value[wordKey], path)].filter(Boolean);
     const containers = Object.keys(value).filter((key) => ['words', 'data', 'items', 'vocabulary', 'list'].includes(canonical(key))); if (containers.length) return containers.flatMap((key) => jsonCandidates(value[key], `${path}.${key}`));
-    return Object.entries(value).flatMap(([key, entry]) => ['meaning', 'phonetic', 'partofspeech', 'example', 'note'].includes(canonical(key)) ? [] : jsonCandidates(entry, `${path}.${key}`));
+    const metadata = new Set(['meaning', 'phonetic', 'partofspeech', 'example', 'note', 'name', 'title', 'description', 'version', 'id', 'count']);
+    return Object.entries(value).flatMap(([key, entry]) => {
+      if (metadata.has(canonical(key))) return [];
+      if (typeof entry === 'string' && /^[a-z]+(?:[-'][a-z]+)*(?:\s+[a-z]+(?:[-'][a-z]+)*)*$/i.test(key)) return [candidate(key, `${path}.${key}`)].filter(Boolean);
+      return typeof entry === 'object' ? jsonCandidates(entry, `${path}.${key}`) : [];
+    });
   }
   function csvRows(text) {
     const rows = []; let row = []; let value = ''; let quoted = false;
@@ -353,7 +370,17 @@
   }
   function contentHash(value) { return hash(JSON.stringify(value)); }
   async function makeDocument(state, plan, kind, version) {
-    const paper = kind === 'study' ? null : paperForVersion(state, plan, version); const words = paper ? paper.items : planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length)); const snapshot = { kind, plan: plan.id, planName: plan.name, startWeek: plan.start_week, week: plan.week.id, version, words, template: 'static-pdf-v6-simple-sheets' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
+    const paper = kind === 'study' ? null : paperForVersion(state, plan, version);
+    let words = paper?.items;
+    if (!paper) {
+      const selected = planWords(state, plan, Boolean(plan.week.frozen_word_ids?.length));
+      const ids = new Set(selected.map(word => word.id));
+      const order = plan.week.study_word_ids;
+      if (!order || order.length !== ids.size || order.some(id => !ids.has(id))) plan.week.study_word_ids = shuffled(selected).map(word => word.id);
+      const lookup = new Map(selected.map(word => [word.id, word]));
+      words = plan.week.study_word_ids.map(id => lookup.get(id));
+    }
+    const snapshot = { kind, plan: plan.id, planName: plan.name, startWeek: plan.start_week, week: plan.week.id, version, words, template: 'static-pdf-v7-independent-order-phrases' }; const digest = contentHash(snapshot); const existing = state.documents.find((document) => document.content_hash === digest && document.status === 'ready'); if (existing) return existing;
     const peers = state.documents.filter((document) => document.plan_id === plan.id && document.week_id === plan.week.id && document.type === kind && document.exam_version === version); const label = kind === 'study' ? '背诵表' : kind === 'answer' ? `${version === 1 ? '周测' : '复测'}答案` : `${version === 1 ? '周测' : '复测'}试卷`; const revision = peers.length + 1; const record = { id: newId('doc'), type: kind, label, plan_id: plan.id, week_id: plan.week.id, exam_version: version, revision, file_name: `${safeName(plan.name)}_第${plan.week.number || 1}周_${label}_v${revision}.pdf`, content_hash: digest, status: 'ready', created_at: now(), snapshot };
     await saveDocumentBlob(record.id, await createPdf(plan, kind, paper || words)); state.documents.unshift(record); return record;
   }
@@ -372,14 +399,23 @@
     if (method === 'POST' && path === '/api/setup') {
       weeklyTarget(body.weekly_target);
       const [words] = await preparedImport(body.filename || '', body.content || '');
-      const book = { id: newId('wb'), name: String(body.name || '').trim() || String(body.filename || '').replace(/\.[^.]+$/, '') || '未命名词表', created_at: now(), words: body.shuffle ? shuffled(words) : words, dictionary_version: DICTIONARY_VERSION };
+      const book = { id: newId('wb'), name: String(body.name || '').trim() || String(body.filename || '').replace(/\.[^.]+$/, '') || '未命名词表', created_at: now(), words, dictionary_version: DICTIONARY_VERSION };
       state.wordbooks.push(book); const plan = createPlan(state, book, body);
       await saveState(state); return { plan, wordbook: { id: book.id, name: book.name, word_count: book.words.length } };
     }
-    if (method === 'POST' && (path === '/api/import/confirm' || path === '/api/import')) { const [words, summary] = await preparedImport(body.filename || '', body.content || '', body.selected_words); const book = { id: newId('wb'), name: String(body.name || '').trim() || String(body.filename || '').replace(/\.[^.]+$/, '') || '未命名词表', created_at: now(), words: body.shuffle ? shuffled(words) : words, dictionary_version: DICTIONARY_VERSION }; state.wordbooks.push(book); await saveState(state); return { wordbook: { id: book.id, name: book.name, word_count: book.words.length, ...summary } }; }
+    if (method === 'POST' && (path === '/api/import/confirm' || path === '/api/import')) { const [words, summary] = await preparedImport(body.filename || '', body.content || '', body.selected_words); const book = { id: newId('wb'), name: String(body.name || '').trim() || String(body.filename || '').replace(/\.[^.]+$/, '') || '未命名词表', created_at: now(), words, dictionary_version: DICTIONARY_VERSION }; state.wordbooks.push(book); await saveState(state); return { wordbook: { id: book.id, name: book.name, word_count: book.words.length, ...summary } }; }
     const bookEdit = path.match(/^\/api\/wordbooks\/([^/]+)$/); if (method === 'POST' && bookEdit) { const book = bookFor(state, bookEdit[1]); if (String(body.name || '').trim()) book.name = String(body.name).trim(); const additions = String(body.add_words || '').split(/\r?\n/).map(extractWord).filter(Boolean); const dictionary = await dictionaryFor(additions); const known = new Set(book.words.map((word) => word.normalized_word)); for (const word of additions) if (!known.has(normal(word))) { const hit = dictionary.get(normal(word)); book.words.push({ id: newId('w'), word, meaning: hit?.meaning || '', phonetic: hit?.phonetic || '', part_of_speech: hit?.part_of_speech || '', example: '', note: '', source_row: '手动添加', normalized_word: normal(word), dictionary_lemma: hit?.lemma || '', dictionary_senses: hit ? [hit.meaning] : [], meaning_source: hit ? 'dictionary' : 'unresolved', dictionary_version: hit ? DICTIONARY_VERSION : '', match_status: hit ? 'matched' : 'unresolved' }); known.add(normal(word)); } await saveState(state); return { wordbook: book }; }
     const removeWords = path.match(/^\/api\/wordbooks\/([^/]+)\/delete-words$/); if (method === 'POST' && removeWords) { const book = bookFor(state, removeWords[1]); const removal = new Set(body.word_ids || []); const used = new Set(state.plans.filter((plan) => plan.wordbook_id === book.id).flatMap((plan) => (plan.cycles || []).flatMap((cycle) => cycle.word_ids || []))); if ([...removal].some((id) => used.has(id))) throw new Error('选中的词正在学习计划中使用；请先删除关联计划后再移除。'); const remaining = book.words.filter((word) => !removal.has(word.id)); if (!remaining.length) throw new Error('词表至少需保留 1 个词'); book.words = remaining; await saveState(state); return { ok: true }; }
-    const deleteBook = path.match(/^\/api\/wordbooks\/([^/]+)\/delete$/); if (method === 'POST' && deleteBook) { const id = deleteBook[1]; if (state.plans.some((plan) => plan.wordbook_id === id)) throw new Error('此词表仍关联学习计划；请先删除计划。'); bookFor(state, id); state.wordbooks = state.wordbooks.filter((book) => book.id !== id); await saveState(state); return { ok: true }; }
+    const deleteBook = path.match(/^\/api\/wordbooks\/([^/]+)\/delete$/);
+    if (method === 'POST' && deleteBook) {
+      const id = deleteBook[1]; bookFor(state, id);
+      const linked = state.plans.filter(plan => plan.wordbook_id === id).map(plan => plan.id);
+      if (linked.length && body.delete_plans !== true) throw new Error('删除此词表会同时删除关联计划及学习进度，请先确认。已生成的 PDF 会保留。');
+      state.wordbooks = state.wordbooks.filter(book => book.id !== id);
+      state.plans = state.plans.filter(plan => !linked.includes(plan.id));
+      if (linked.includes(state.active_plan_id)) state.active_plan_id = state.plans[0]?.id || null;
+      await saveState(state); return { ok: true, deleted_plan_ids: linked };
+    }
     if (method === 'POST' && path === '/api/plans') { const plan = createPlan(state, bookFor(state, body.wordbook_id), body); await saveState(state); return { plan }; }
     const planEdit = path.match(/^\/api\/plans\/([^/]+)$/); if (method === 'POST' && planEdit) { const plan = planFor(state, planEdit[1]); if (String(body.name || '').trim()) plan.name = String(body.name).trim(); if (body.start_week) plan.start_week = body.start_week; if (body.weekly_target !== undefined) { const target = weeklyTarget(body.weekly_target); plan.weekly_target = target; plan.estimated_cycles = estimateCycles(bookFor(state, plan.wordbook_id).words.length, target); if (!plan.week.papers.length && !plan.week.frozen_word_ids?.length && plan.status !== 'completed') { plan.cycles.pop(); buildCycle(state, plan); } } await saveState(state); return { plan }; }
     const deletePlan = path.match(/^\/api\/plans\/([^/]+)\/delete$/); if (method === 'POST' && deletePlan) { const id = deletePlan[1]; planFor(state, id); state.plans = state.plans.filter((plan) => plan.id !== id); if (state.active_plan_id === id) state.active_plan_id = state.plans[0]?.id || null; await saveState(state); return { ok: true }; }

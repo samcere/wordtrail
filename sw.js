@@ -1,4 +1,4 @@
-const CACHE = 'wordtrail-static-v015-workbench';
+const CACHE = 'wordtrail-static-v016-phrases';
 const CORE = [
   './', './index.html', './interface.css',
   './workbench.js', './app.js', './static-service.js', './wrongbook-store.js', './wrongbook.js', './wrongbook-ai.js', './wrongbook-prompt.js', './manifest.webmanifest', './icon.svg',

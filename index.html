@@ -60,10 +60,10 @@
       <div id="setup-file-area"><label class="file-picker" for="import-file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3M7 8l5-5 5 5M5 15v5h14v-5"/></svg><strong id="file-label">选择单词文件</strong><span class="caption">TXT / JSON / CSV / Excel</span><input id="import-file" type="file" accept=".txt,.json,.csv,.xls,.xlsx"></label></div>
       <p id="setup-existing" class="existing-book" hidden></p>
       <div id="import-status" class="import-status" role="status" hidden></div>
-      <details id="import-preview" class="preview" hidden><summary>查看识别结果 <span id="preview-count"></span></summary><div id="preview-list" class="preview-list"></div><p class="caption">只提取英文词，中文释义由词典补全。</p></details>
+      <details id="import-preview" class="preview" hidden><summary>查看识别结果 <span id="preview-count"></span></summary><div id="preview-list" class="preview-list"></div><p class="caption">识别单词和词组，忽略原翻译，释义由词典补全；未收录的词组完整保留。</p></details>
       <label class="field" for="setup-target">每周学多少个词<input id="setup-target" type="number" min="1" step="1" required placeholder="例如 60" inputmode="numeric"></label>
       <p id="setup-estimate" class="caption">从第二周起，会穿插约 10% 的旧词复习。</p>
-      <details class="options"><summary>更多选项</summary><label class="field" for="setup-name">名称<input id="setup-name" maxlength="80" placeholder="默认使用词表名称"></label><label id="shuffle-label" class="check-row"><input id="setup-shuffle" type="checkbox">乱序导入</label></details>
+      <p class="caption">按文件原顺序导入；背诵表和考试表分别乱序。</p><details class="options"><summary>更多选项</summary><label class="field" for="setup-name">名称<input id="setup-name" maxlength="80" placeholder="默认使用词表名称"></label></details>
       <p id="setup-error" class="inline-error" role="alert" hidden></p>
       <button id="setup-submit" type="submit" class="primary full" disabled>开始学习</button>
     </form>
@@ -82,7 +82,7 @@
 
   <dialog id="book-dialog" class="wide-dialog" aria-labelledby="book-dialog-title">
     <div class="dialog-heading"><h2 id="book-dialog-title">编辑词表</h2><button type="button" class="icon-button" data-close aria-label="关闭"><span aria-hidden="true">×</span></button></div>
-    <form id="book-form"><input id="edit-book-id" type="hidden"><label class="field" for="edit-book-name">名称<input id="edit-book-name" required maxlength="80"></label><details class="options"><summary>追加单词</summary><label class="field" for="book-add">每行一个英文词<textarea id="book-add" rows="3"></textarea></label></details><div class="form-actions"><button type="button" class="text danger" data-action="delete-book">删除词表</button><button type="submit" class="secondary">保存修改</button></div><p id="book-error" class="inline-error" role="alert" hidden></p></form>
+    <form id="book-form"><input id="edit-book-id" type="hidden"><label class="field" for="edit-book-name">名称<input id="edit-book-name" required maxlength="80"></label><details class="options"><summary>追加单词 / 词组</summary><label class="field" for="book-add">每行一个单词或词组<textarea id="book-add" rows="3"></textarea></label></details><div class="form-actions"><button type="button" class="text danger" data-action="delete-book">删除词表</button><button type="submit" class="secondary">保存修改</button></div><p id="book-error" class="inline-error" role="alert" hidden></p></form>
     <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input id="book-search" type="search" placeholder="查找词表中的单词" aria-label="查找词表中的单词"></label><div id="book-words" class="book-words"></div><div id="book-pagination" class="pagination"></div><div class="selection-footer"><span id="book-selection" class="caption"></span><button type="button" class="text danger" id="delete-words" data-action="delete-words" disabled>删除选中词</button></div><p class="caption">正在被计划使用的单词暂时不能删除。</p>
   </dialog>
 

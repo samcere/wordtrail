@@ -237,7 +237,7 @@ textarea{resize:vertical;min-height:96px}
 .form-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px}
 .section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .manage-section+.manage-section{margin-top:24px}
-.manage-row .inline-actions{flex-shrink:0;gap:0}
+.manage-row .inline-actions{flex-shrink:0;gap:0;max-width:65%;justify-content:flex-end}
 .manage-row button{font-size:13px;padding:8px 10px}
 .existing-book{padding:16px;background:var(--accent-soft);border-radius:6px;font-size:14px}
 .book-words{max-height:340px;overflow:auto}

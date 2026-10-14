@@ -132,5 +132,140 @@
       "entries": 1847,
       "bytes": 163486
     }
+  },
+  "phrases": {
+    "entries": 357824,
+    "shards": {
+      "a": {
+        "file": "a-phrases.json",
+        "entries": 29434,
+        "bytes": 2230384
+      },
+      "b": {
+        "file": "b-phrases.json",
+        "entries": 22023,
+        "bytes": 1622996
+      },
+      "c": {
+        "file": "c-phrases.json",
+        "entries": 37119,
+        "bytes": 2778897
+      },
+      "d": {
+        "file": "d-phrases.json",
+        "entries": 17384,
+        "bytes": 1319955
+      },
+      "e": {
+        "file": "e-phrases.json",
+        "entries": 13212,
+        "bytes": 1017810
+      },
+      "f": {
+        "file": "f-phrases.json",
+        "entries": 17555,
+        "bytes": 1296132
+      },
+      "g": {
+        "file": "g-phrases.json",
+        "entries": 14614,
+        "bytes": 1048983
+      },
+      "h": {
+        "file": "h-phrases.json",
+        "entries": 11664,
+        "bytes": 898471
+      },
+      "i": {
+        "file": "i-phrases.json",
+        "entries": 14671,
+        "bytes": 1125279
+      },
+      "j": {
+        "file": "j-phrases.json",
+        "entries": 2791,
+        "bytes": 216237
+      },
+      "k": {
+        "file": "k-phrases.json",
+        "entries": 2716,
+        "bytes": 216257
+      },
+      "l": {
+        "file": "l-phrases.json",
+        "entries": 15461,
+        "bytes": 1149054
+      },
+      "m": {
+        "file": "m-phrases.json",
+        "entries": 20316,
+        "bytes": 1565151
+      },
+      "n": {
+        "file": "n-phrases.json",
+        "entries": 9034,
+        "bytes": 687264
+      },
+      "o": {
+        "file": "o-phrases.json",
+        "entries": 10075,
+        "bytes": 743030
+      },
+      "p": {
+        "file": "p-phrases.json",
+        "entries": 28027,
+        "bytes": 2132195
+      },
+      "q": {
+        "file": "q-phrases.json",
+        "entries": 1481,
+        "bytes": 111907
+      },
+      "r": {
+        "file": "r-phrases.json",
+        "entries": 16387,
+        "bytes": 1220681
+      },
+      "s": {
+        "file": "s-phrases.json",
+        "entries": 35839,
+        "bytes": 2665866
+      },
+      "t": {
+        "file": "t-phrases.json",
+        "entries": 18710,
+        "bytes": 1390939
+      },
+      "u": {
+        "file": "u-phrases.json",
+        "entries": 4322,
+        "bytes": 333932
+      },
+      "v": {
+        "file": "v-phrases.json",
+        "entries": 5744,
+        "bytes": 435493
+      },
+      "w": {
+        "file": "w-phrases.json",
+        "entries": 7537,
+        "bytes": 558426
+      },
+      "x": {
+        "file": "x-phrases.json",
+        "entries": 302,
+        "bytes": 22592
+      },
+      "y": {
+        "file": "y-phrases.json",
+        "entries": 639,
+        "bytes": 47186
+      },
+      "z": {
+        "file": "z-phrases.json",
+        "entries": 767,
+        "bytes": 57220
+      }
+    }
   }
 }

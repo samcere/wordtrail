@@ -18,8 +18,8 @@
   const currentWords = () => {
     const current = plan();
     const ids = current?.week.frozen_word_ids?.length ? current.week.frozen_word_ids : current?.week.word_ids || [];
-    const lookup = new Map((book()?.words || []).map(word => [word.id, word]));
-    return ids.map(id => lookup.get(id)).filter(Boolean);
+    const selected = new Set(ids);
+    return (book()?.words || []).filter(word => selected.has(word.id));
   };
   const version = () => plan()?.week.papers.some(paper => paper.version === 1 && paper.result_at) ? 2 : 1;
   const paper = () => plan()?.week.papers.find(item => item.version === version());
@@ -261,14 +261,14 @@
     });
   }
   function renderManage() {
-    $('#manage-books').innerHTML = state.wordbooks.map(item => `<div class="manage-row"><div><strong>${esc(item.name)}</strong><p>${item.word_count} 个词</p></div><div class="inline-actions"><button type="button" class="quiet" data-action="edit-book" data-id="${item.id}">编辑</button><button type="button" class="text" data-action="book-plan" data-id="${item.id}">开始学习</button></div></div>`).join('') || '<p class="caption">还没有词表。</p>';
+    $('#manage-books').innerHTML = state.wordbooks.map(item => `<div class="manage-row"><div><strong>${esc(item.name)}</strong><p>${item.word_count} 个词</p></div><div class="inline-actions"><button type="button" class="quiet" data-action="edit-book" data-id="${item.id}">编辑</button><button type="button" class="text" data-action="book-plan" data-id="${item.id}">开始学习</button><button type="button" class="text danger" data-action="delete-book" data-id="${item.id}" aria-label="删除词表 ${esc(item.name)}">删除</button></div></div>`).join('') || '<p class="caption">还没有词表。</p>';
     $('#manage-plans').innerHTML = state.plans.map(item => `<div class="manage-row"><div><strong>${esc(item.name)}</strong><p>${item.status === 'completed' ? '已学完' : `第 ${item.week.number} 周`} · 每周 ${item.weekly_target} 词</p></div><div class="inline-actions"><button type="button" class="quiet" data-action="edit-plan" data-id="${item.id}">编辑</button>${item.id === plan()?.id ? '<span class="caption">当前</span>' : `<button type="button" class="text" data-action="activate" data-id="${item.id}">使用</button>`}</div></div>`).join('') || '<p class="caption">导入词表时会一起创建计划。</p>';
   }
   function openSetup(id = '') {
     importToken++; setupBookId = id; importData = null;
     $('#setup-form').reset(); fieldError('#setup-error');
     $('#file-label').textContent = '选择单词文件'; $('#import-status').hidden = true; $('#import-preview').hidden = true; $('#import-preview').open = false;
-    $('#setup-file-area').hidden = !!id; $('#setup-existing').hidden = !id; $('#shuffle-label').hidden = !!id;
+    $('#setup-file-area').hidden = !!id; $('#setup-existing').hidden = !id;
     $('#setup-title').textContent = id ? '设置学习节奏' : '导入并开始学习';
     if (id) $('#setup-existing').textContent = `${book(id).name} · ${book(id).word_count} 个词`;
     $('#setup-submit').disabled = !id; estimate(); showDialog('#setup-dialog');
@@ -312,7 +312,7 @@
       try {
         const name = $('#setup-name').value.trim() || (setupBookId ? book(setupBookId).name : importData.filename.replace(/\.[^.]+$/, ''));
         if (setupBookId) await post('/api/plans', { wordbook_id: setupBookId, name, weekly_target: target, start_week: localDate() });
-        else await post('/api/setup', { filename: importData.filename, content: importData.content, name, weekly_target: target, start_week: localDate(), shuffle: $('#setup-shuffle').checked });
+        else await post('/api/setup', { filename: importData.filename, content: importData.content, name, weekly_target: target, start_week: localDate() });
         $('#setup-dialog').close(); await refresh(); setMode('study'); notify('词表和计划已创建。');
       } catch (error) { fieldError('#setup-error', error.message); }
     });
@@ -390,8 +390,16 @@
         await run(button, '正在删除…', async () => { try { await post(`/api/wordbooks/${$('#edit-book-id').value}/delete-words`, { word_ids: [...bookSelection] }); bookSelection.clear(); await refresh(); renderBookWords(); notify('选中词已删除。'); } catch (error) { fieldError('#book-error', error.message); } }); break;
       }
       case 'delete-book': {
-        if (!confirm(`删除词表「${book($('#edit-book-id').value).name}」？有关联计划时需要先删除计划。`)) break;
-        await run(button, '正在删除…', async () => { try { await post(`/api/wordbooks/${$('#edit-book-id').value}/delete`, {}); $('#book-dialog').close(); await refresh(); } catch (error) { fieldError('#book-error', error.message); } }); break;
+        const target = id || $('#edit-book-id').value, current = book(target);
+        if (!current) break;
+        const linked = state.plans.filter(item => item.wordbook_id === target);
+        if (!confirm(`删除词表「${current.name}」？${linked.length ? `\n同时删除关联的 ${linked.length} 个学习计划及其进度。` : ''}\n已生成的 PDF 和错题整理数据会保留。此操作不可撤销。`)) break;
+        await run(button, '正在删除…', async () => {
+          await post(`/api/wordbooks/${target}/delete`, { delete_plans: linked.length > 0 });
+          if ($('#edit-book-id').value === target) $('#book-dialog').close();
+          if (linked.some(item => item.id === quiz?.planId)) quiz = null;
+          await refresh(); notify('词表已删除，已生成的 PDF 已保留。');
+        }); break;
       }
       case 'delete-plan': {
         if (!confirm('删除这个学习计划？词表和已生成的 PDF 会保留。')) break;

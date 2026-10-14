@@ -1,10 +1,10 @@
 {
   "name": "wordtrail-static",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dictionary": "node scripts/build-dictionary.mjs",
+    "dictionary": "node scripts/build-dictionary.mjs && node scripts/build-phrases.mjs",
     "vendor": "node scripts/copy-vendor.mjs",
     "check": "node --check workbench.js && node --check static-service.js && node --check app.js && node --check omr.js && node --check wrongbook-store.js && node --check wrongbook.js && node --check wrongbook-ai.js && node --check wrongbook-prompt.js",
     "serve": "node tests/serve.mjs"
